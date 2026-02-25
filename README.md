@@ -136,13 +136,6 @@ If installed via `pipx` or `pip`, use:
 - Memory instruction store for categorization rules
 - Resource providers for ledger, memory, and health status
 
-## Release and Distribution
-
-For post-publish checklist, discoverability, and install guidance for end users:
-
-- `docs/publishing_guide.md`
-
 ## Documentation
 
 - User guide: `docs/user_guide.md`
-- Publishing and adoption guide: `docs/publishing_guide.md`
