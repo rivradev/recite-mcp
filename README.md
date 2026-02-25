@@ -1,5 +1,6 @@
 # recite-mcp
-<!-- mcp-name: io.github.rivradev/recite-mcp -->
+
+`mcp-name: io.github.rivradev/recite-mcp`
 
 `recite-mcp` is a local MCP server for receipt processing with the Recite API. It provides tools for single/batch receipt processing, ledger writes, corrections, memory instructions, and health/status resources.
 
@@ -94,6 +95,11 @@ If installed via `pipx` or `pip`, use:
 ```
 
 ## Troubleshooting
+
+### MCP Registry ownership validation failed
+
+- Symptom: Registry publish returns a PyPI ownership/README validation error.
+- Fix: keep this exact line in packaged README: `mcp-name: io.github.rivradev/recite-mcp`, then bump version and upload new PyPI release before publishing to Registry.
 
 ### `RECITE_API_KEY` missing or invalid
 

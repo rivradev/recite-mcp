@@ -7,12 +7,12 @@
     "url": "https://github.com/rivradev/recite-mcp",
     "source": "github"
   },
-  "version": "0.1.2",
+  "version": "0.1.4",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "recite-mcp",
-      "version": "0.1.2",
+      "version": "0.1.4",
       "transport": {
         "type": "stdio"
       },
