@@ -1,4 +1,5 @@
 # recite-mcp
+<!-- mcp-name: io.github.rivradev/recite-mcp -->
 
 `recite-mcp` is a local MCP server for receipt processing with the Recite API. It provides tools for single/batch receipt processing, ledger writes, corrections, memory instructions, and health/status resources.
 
