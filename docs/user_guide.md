@@ -100,15 +100,27 @@ Use this if you installed with `pipx` or `pip`:
 
 ## 5. Common tools you can call
 
-- `validate_setup()`: check if API key and local paths are ready.
-- `process_receipt(file_path, rename=False, category_hint=None, dry_run=False)`
-- `process_receipts_batch(input_dir, rename=False, dry_run=True, recursive=True)`
-- `summarize_ledger(group_by="vendor")`
-- `export_ledger(format, output_path)`
-- `update_memory(instruction, tags=None)`
-- `list_memory()`
+All tools this MCP provides (use these names when asking your MCP client/agent to call tools):
 
-## 6. Local files created
+- `validate_setup()`: checks API key and local paths are ready.
+- `get_config()`: shows effective configuration (without secrets).
+- `process_receipt(file_path, rename=False, category_hint=None, dry_run=False)`: process one receipt image (use `dry_run=True` first).
+- `process_receipts_batch(input_dir, rename=False, dry_run=True, recursive=True)`: process a folder of receipts (use `dry_run=True` first).
+- `summarize_ledger(group_by="vendor")`: aggregates ledger totals by vendor/category/etc.
+- `export_ledger(format, output_path)`: exports ledger to a file (`format` supports `csv` and `json`).
+- `add_ledger_correction(original_entry_id, corrected_fields, reason)`: appends an audit-safe correction entry.
+- `update_memory(instruction, tags=None)`: saves a long-term categorization rule/instruction.
+- `list_memory()`: lists saved memory instructions.
+
+## 6. Resources you can read
+
+Some MCP clients can read resources directly (read-only):
+
+- `recite://ledger`: ledger rows
+- `recite://memory`: memory text
+- `recite://health`: health/status
+
+## 7. Local files created
 
 By default (`RECITE_HOME` not set), files are under `~/.config/recite/`:
 
@@ -116,15 +128,21 @@ By default (`RECITE_HOME` not set), files are under `~/.config/recite/`:
 - `long_term_memory.md` (memory instructions)
 - `config.toml` (optional configuration)
 
-## 7. First-run checklist
+Notes:
+
+- If you set `RECITE_HOME`, these files are created under that directory instead.
+- Ledger corrections are appended as new records (audit-safe).
+
+## 8. First-run checklist
 
 1. Start MCP client with your config.
 2. Call `validate_setup()`.
 3. Run one `process_receipt(...)` call with `dry_run=True`.
 4. Run again with `dry_run=False` after validation.
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 - API rejected: check `RECITE_API_KEY` and token validity.
 - Command not found: use the matching config for `uvx` vs `recite-mcp`.
 - No tools in client: validate JSON config and restart MCP client.
+ - Permissions errors: ensure `RECITE_HOME` points to a writable directory.
