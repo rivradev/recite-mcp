@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "recite-mcp"
+version = "0.1.1"
+description = "Local MCP server for Recite receipt processing"
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["mcp", "mcp-server", "receipts", "bookkeeping", "recite"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+  "mcp[cli]>=1.0.0",
+  "requests>=2.31.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.5.0",
+  "mypy>=1.10.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/rivradev/recite-mcp"
+Repository = "https://github.com/rivradev/recite-mcp"
+Issues = "https://github.com/rivradev/recite-mcp/issues"
+
+[project.scripts]
+recite-mcp = "recite_mcp.server:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
