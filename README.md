@@ -6,11 +6,19 @@
 
 ### End users
 
+Recommended:
+
 ```bash
 uvx recite-mcp
 ```
 
-Alternative:
+Alternative (`pipx`):
+
+```bash
+pipx install recite-mcp
+```
+
+Alternative (`pip`):
 
 ```bash
 python -m pip install recite-mcp
@@ -52,7 +60,7 @@ export RECITE_HOME="$HOME/.config/recite"
 
 ## MCP Client Config
 
-Use `uvx` for the cleanest user install path:
+Copy-paste this config:
 
 ```json
 {
@@ -67,6 +75,51 @@ Use `uvx` for the cleanest user install path:
   }
 }
 ```
+
+If installed via `pipx` or `pip`, use:
+
+```json
+{
+  "mcpServers": {
+    "recite": {
+      "command": "recite-mcp",
+      "args": [],
+      "env": {
+        "RECITE_API_KEY": "re_live_xxx"
+      }
+    }
+  }
+}
+```
+
+## Troubleshooting
+
+### `RECITE_API_KEY` missing or invalid
+
+- Symptom: setup validation fails or API requests are rejected.
+- Fix: set `RECITE_API_KEY` in MCP client `env` config (preferred) or shell environment.
+
+### `uvx` command not found
+
+- Symptom: terminal says `uvx` is not recognized.
+- Fix: install `uv` first, or use one of the alternatives:
+  - `pipx install recite-mcp`
+  - `python -m pip install recite-mcp`
+
+### `recite-mcp` command not found after install
+
+- Symptom: command not recognized after `pipx`/`pip` install.
+- Fix:
+  - For `pipx`: run `pipx ensurepath`, then reopen terminal.
+  - For `pip`: run with module entrypoint: `python -m recite_mcp.server`
+
+### MCP client starts but tools are unavailable
+
+- Symptom: server appears configured but no tools/resources are listed.
+- Fix:
+  - Confirm MCP config JSON is valid.
+  - Confirm command and args match your install method (`uvx` vs `recite-mcp`).
+  - Restart MCP client after config changes.
 
 ## Main Features
 
@@ -84,4 +137,5 @@ For post-publish checklist, discoverability, and install guidance for end users:
 
 ## Documentation
 
-- Implementation and operations walkthrough: `docs/walkthrough.md`
+- User guide: `docs/user_guide.md`
+- Publishing and adoption guide: `docs/publishing_guide.md`
