@@ -36,7 +36,7 @@ python -m recite_mcp.server
 
 ## Required Environment
 
-Set API key (required to process receipts; server can still start without it so `validate_setup()` can report what's missing):
+Get an API key at `https://recite.rivra.dev/settings/api` (includes 30 free scans per month), then set `RECITE_API_KEY` (required to process receipts; server can still start without it so `validate_setup()` can report what's missing):
 
 ```bash
 # Windows PowerShell
@@ -128,7 +128,7 @@ If installed via `pipx` or `pip`, use:
   - Confirm command and args match your install method (`uvx` vs `recite-mcp`).
   - Restart MCP client after config changes.
 
-### Can’t download from PyPI (uvx/pip)
+### Can't download from PyPI (uvx/pip)
 
 - Symptom: install/run fails with network/proxy errors.
 - Fix: ensure your environment can reach PyPI (or configure your proxy / custom index). If you're on a locked-down network, you may need to allowlist PyPI or use an internal mirror.
