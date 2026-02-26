@@ -20,10 +20,15 @@ class ResourceProvider:
         return self._settings.memory_path.read_text(encoding="utf-8")
 
     def get_health(self) -> dict:
+        issues: list[str] = []
+        if not self._settings.api_key:
+            issues.append("missing_api_key")
+        status = "ok" if not issues else "degraded"
         return {
-            "status": "ok",
+            "status": status,
             "recite_home": str(self._settings.recite_home),
             "ledger_path": str(self._settings.ledger_path),
             "memory_path": str(self._settings.memory_path),
             "has_api_key": bool(self._settings.api_key),
+            "issues": issues,
         }

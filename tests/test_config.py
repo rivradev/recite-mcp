@@ -41,6 +41,16 @@ def test_load_settings_raises_without_api_key(monkeypatch: pytest.MonkeyPatch, t
         load_settings(require_api_key=True)
 
 
+def test_load_settings_allows_missing_api_key_when_not_required(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("RECITE_HOME", str(tmp_path / "recite"))
+    monkeypatch.delenv("RECITE_API_KEY", raising=False)
+
+    settings = load_settings(require_api_key=False)
+
+    assert settings.api_key is None
+    assert settings.recite_home.exists()
+
+
 def test_settings_paths_are_derived_from_home(tmp_path: Path) -> None:
     settings = Settings(
         recite_home=tmp_path,

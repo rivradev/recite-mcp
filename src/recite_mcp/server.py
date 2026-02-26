@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import argparse
+import importlib.metadata
+import json
+import sys
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable
 
@@ -97,18 +101,67 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
 
 
 def create_server() -> Any:
-    settings = load_settings()
+    # Don't fail hard at process start if RECITE_API_KEY is missing.
+    # MCP clients should still be able to connect and call validate_setup/get_config.
+    settings = load_settings(require_api_key=False)
     tools = ReciteTools.from_settings(settings)
     resources = ResourceProvider(settings)
     server = FastMCP("recite-mcp") if FastMCP is not None else _SimpleServer()
     return _build_handlers(server, tools, resources, settings)
 
 
-def main() -> None:
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="recite-mcp", add_help=True)
+    parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Print version and exit.",
+    )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Print local health/config JSON and exit (does not call the Recite API).",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio"],
+        default="stdio",
+        help="Transport to use when running as an MCP server (default: stdio).",
+    )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> None:
+    args = _build_arg_parser().parse_args(argv)
+
+    if args.version:
+        try:
+            version = importlib.metadata.version("recite-mcp")
+        except importlib.metadata.PackageNotFoundError:
+            version = "unknown"
+        print(version)
+        return
+
+    if args.validate:
+        settings = load_settings(require_api_key=False)
+        health = ResourceProvider(settings).get_health()
+        payload = {
+            "config": {
+                "recite_home": str(settings.recite_home),
+                "api_base_url": settings.api_base_url,
+                "request_timeout_sec": settings.request_timeout_sec,
+                "has_api_key": bool(settings.api_key),
+            },
+            "health": health,
+        }
+        print(json.dumps(payload, indent=2))
+        sys.exit(0 if settings.api_key else 1)
+
     server = create_server()
     if FastMCP is not None and hasattr(server, "run"):
-        server.run(transport="stdio")
+        server.run(transport=args.transport)
         return
+    # Fallback mode is primarily for local dev when mcp isn't installed.
     print("recite-mcp initialized (fallback mode)")
     print(f"tools={','.join(sorted(server.tools.keys()))}")
     print(f"resources={','.join(sorted(server.resources.keys()))}")

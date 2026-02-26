@@ -36,7 +36,7 @@ python -m recite_mcp.server
 
 ## Required Environment
 
-Set API key:
+Set API key (required to process receipts; server can still start without it so `validate_setup()` can report what's missing):
 
 ```bash
 # Windows PowerShell
@@ -103,7 +103,7 @@ If installed via `pipx` or `pip`, use:
 
 ### `RECITE_API_KEY` missing or invalid
 
-- Symptom: setup validation fails or API requests are rejected.
+- Symptom: `validate_setup()` reports `missing_api_key` or API requests are rejected.
 - Fix: set `RECITE_API_KEY` in MCP client `env` config (preferred) or shell environment.
 
 ### `uvx` command not found
@@ -127,6 +127,15 @@ If installed via `pipx` or `pip`, use:
   - Confirm MCP config JSON is valid.
   - Confirm command and args match your install method (`uvx` vs `recite-mcp`).
   - Restart MCP client after config changes.
+
+### Can’t download from PyPI (uvx/pip)
+
+- Symptom: install/run fails with network/proxy errors.
+- Fix: ensure your environment can reach PyPI (or configure your proxy / custom index). If you're on a locked-down network, you may need to allowlist PyPI or use an internal mirror.
+
+### Quick local validation (no MCP client)
+
+- Run `recite-mcp --validate` (or `uvx recite-mcp --validate`) to print local config/health JSON. Exit code is `0` if an API key is present, otherwise `1`.
 
 ## Main Features
 
