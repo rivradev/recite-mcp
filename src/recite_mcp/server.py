@@ -52,6 +52,212 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
     def process_receipts_batch(input_dir: str, rename: bool = False, dry_run: bool = True, recursive: bool = True) -> dict:
         return _serialize(tools.process_receipts_batch(input_dir=input_dir, rename=rename, dry_run=dry_run, recursive=recursive))
 
+    @server.tool("scan_receipt")
+    def scan_receipt(
+        file_path: str | None = None,
+        image_url: str | None = None,
+        image_base64: str | None = None,
+        raw_text: str | None = None,
+        auto_save: bool = False,
+        save_threshold: str | None = None,
+        project_id: str | None = None,
+        status: str | None = None,
+        image_type: str | None = None,
+        idempotency_key: str | None = None,
+        metadata: dict | None = None,
+        ephemeral: bool = False,
+    ) -> dict:
+        return tools.scan_receipt(
+            file_path=file_path,
+            image_url=image_url,
+            image_base64=image_base64,
+            raw_text=raw_text,
+            auto_save=auto_save,
+            save_threshold=save_threshold,
+            project_id=project_id,
+            status=status,
+            image_type=image_type,
+            idempotency_key=idempotency_key,
+            metadata=metadata,
+            ephemeral=ephemeral,
+        )
+
+    @server.tool("get_scan")
+    def get_scan(scan_id: str) -> dict:
+        return tools.get_scan(scan_id)
+
+    @server.tool("create_transaction")
+    def create_transaction(transaction: dict) -> dict:
+        return tools.create_transaction(transaction)
+
+    @server.tool("list_transactions")
+    def list_transactions(
+        start_date: str | None = None,
+        end_date: str | None = None,
+        transaction_type: str | None = None,
+        category: str | None = None,
+        vendor: str | None = None,
+        payment_method: str | None = None,
+        amount_min: float | int | None = None,
+        amount_max: float | int | None = None,
+        status: str | None = None,
+        project_id: str | None = None,
+        source: str | None = None,
+        agent_name: str | None = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict:
+        return tools.list_transactions(
+            start_date=start_date,
+            end_date=end_date,
+            transaction_type=transaction_type,
+            category=category,
+            vendor=vendor,
+            payment_method=payment_method,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            status=status,
+            project_id=project_id,
+            source=source,
+            agent_name=agent_name,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    @server.tool("get_transaction")
+    def get_transaction(transaction_id: str) -> dict:
+        return tools.get_transaction(transaction_id)
+
+    @server.tool("update_transaction")
+    def update_transaction(transaction_id: str, changes: dict) -> dict:
+        return tools.update_transaction(transaction_id, changes)
+
+    @server.tool("delete_transaction")
+    def delete_transaction(transaction_id: str) -> dict:
+        return tools.delete_transaction(transaction_id)
+
+    @server.tool("import_transactions")
+    def import_transactions(
+        transactions: list[dict] | None = None,
+        csv_text: str | None = None,
+        csv_file_path: str | None = None,
+        all_or_nothing: bool | None = None,
+        project_id: str | None = None,
+    ) -> dict:
+        return tools.import_transactions(
+            transactions=transactions,
+            csv_text=csv_text,
+            csv_file_path=csv_file_path,
+            all_or_nothing=all_or_nothing,
+            project_id=project_id,
+        )
+
+    @server.tool("submit_batch_scans")
+    def submit_batch_scans(
+        items: list[dict],
+        auto_save: bool = False,
+        save_threshold: str | None = None,
+        project_id: str | None = None,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
+    ) -> dict:
+        return tools.submit_batch_scans(
+            items=items,
+            auto_save=auto_save,
+            save_threshold=save_threshold,
+            project_id=project_id,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
+        )
+
+    @server.tool("get_batch_scan_status")
+    def get_batch_scan_status(job_id: str) -> dict:
+        return tools.get_batch_scan_status(job_id)
+
+    @server.tool("get_batch_scan_results")
+    def get_batch_scan_results(job_id: str) -> dict:
+        return tools.get_batch_scan_results(job_id)
+
+    @server.tool("list_projects")
+    def list_projects(
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict:
+        return tools.list_projects(status=status, limit=limit, offset=offset, format=format)
+
+    @server.tool("create_project")
+    def create_project(name: str, description: str | None = None) -> dict:
+        return tools.create_project(name=name, description=description)
+
+    @server.tool("update_project")
+    def update_project(
+        project_id: str,
+        name: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+    ) -> dict:
+        return tools.update_project(project_id, name=name, description=description, status=status)
+
+    @server.tool("delete_project")
+    def delete_project(project_id: str) -> dict:
+        return tools.delete_project(project_id)
+
+    @server.tool("get_summary")
+    def get_summary(
+        period: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        project_id: str | None = None,
+        group_by: str | None = None,
+    ) -> dict:
+        return tools.get_summary(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            project_id=project_id,
+            group_by=group_by,
+        )
+
+    @server.tool("create_webhook")
+    def create_webhook(url: str, events: list[str], secret: str | None = None) -> dict:
+        return tools.create_webhook(url=url, events=events, secret=secret)
+
+    @server.tool("list_webhooks")
+    def list_webhooks() -> dict:
+        return tools.list_webhooks()
+
+    @server.tool("delete_webhook")
+    def delete_webhook(webhook_id: str) -> dict:
+        return tools.delete_webhook(webhook_id)
+
+    @server.tool("create_rule")
+    def create_rule(rule_type: str, condition: dict, action: dict, priority: int | None = None) -> dict:
+        return tools.create_rule(rule_type=rule_type, condition=condition, action=action, priority=priority)
+
+    @server.tool("list_rules")
+    def list_rules(limit: int | None = None, offset: int | None = None) -> dict:
+        return tools.list_rules(limit=limit, offset=offset)
+
+    @server.tool("delete_rule")
+    def delete_rule(rule_id: str) -> dict:
+        return tools.delete_rule(rule_id)
+
+    @server.tool("get_usage")
+    def get_usage(period: str | None = None, breakdown: str | None = None) -> dict:
+        return tools.get_usage(period=period, breakdown=breakdown)
+
+    @server.tool("export_transactions")
+    def export_transactions(format: str, filters: dict | None = None) -> dict:
+        return tools.export_transactions(format=format, filters=filters)
+
     @server.tool("update_memory")
     def update_memory(instruction: str, tags: list[str] | None = None) -> dict:
         return tools.update_memory(instruction=instruction, tags=tags)

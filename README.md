@@ -2,7 +2,7 @@
 
 `mcp-name: io.github.rivradev/recite-mcp`
 
-`recite-mcp` is a local MCP server for receipt processing with the Recite API. It provides tools for single/batch receipt processing, ledger writes, corrections, memory instructions, and health/status resources.
+`recite-mcp` is an MCP server for the Recite API. It provides the full documented Recite MCP surface for scans, transactions, imports, batch jobs, projects, summaries, webhooks, rules, usage, and exports, while preserving the local ledger/memory workflow for agents that want local-first bookkeeping.
 
 ## Install
 
@@ -139,10 +139,10 @@ If installed via `pipx` or `pip`, use:
 
 ## Main Features
 
-- Single receipt processing and optional file rename
-- Batch processing with dry-run preview
-- Local CSV ledger append and audit-safe correction entries
-- Memory instruction store for categorization rules
+- Full Recite API MCP tools for scans, transactions, imports, batch jobs, projects, summaries, webhooks, rules, usage, and exports
+- Ephemeral scan support so agents can process receipts without persisting scan records server-side
+- Local single-receipt processing, batch dry-run preview, and optional file rename
+- Local CSV ledger append, audit-safe correction entries, and memory instruction storage
 - Resource providers for ledger, memory, and health status
 
 ## Documentation

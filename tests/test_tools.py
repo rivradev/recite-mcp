@@ -11,6 +11,12 @@ class _Client:
     def process_receipt(self, _path: Path) -> ReceiptRecord:
         return ReceiptRecord(vendor="Bakery", date="2026-02-22", total=8.0, tax=0.8, currency="USD", category="Meals")
 
+    def scan_receipt(self, **kwargs) -> dict:  # noqa: ANN003
+        return {"data": kwargs}
+
+    def get_summary(self, **kwargs) -> dict:  # noqa: ANN003
+        return {"data": kwargs}
+
 
 def _settings(tmp_path: Path) -> Settings:
     return Settings(recite_home=tmp_path, api_key="x", api_base_url="https://example", request_timeout_sec=20)
@@ -39,3 +45,21 @@ def test_batch_dry_run_returns_preview(tmp_path: Path) -> None:
     assert batch.processed == 0
     assert batch.preview_count == 2
 
+
+def test_scan_receipt_tool_forwards_ephemeral_request(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+
+    result = tools.scan_receipt(file_path=str(image), ephemeral=True)
+
+    assert result["data"]["ephemeral"] is True
+    assert result["data"]["file_path"] == str(image)
+
+
+def test_get_summary_tool_passes_grouping_options(tmp_path: Path) -> None:
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+
+    result = tools.get_summary(period="last_30_days", group_by="category")
+
+    assert result["data"] == {"period": "last_30_days", "group_by": "category"}

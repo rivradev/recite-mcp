@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from recite_mcp.api_client import ApiClient
 from recite_mcp.config import Settings
@@ -55,6 +56,210 @@ class ReciteTools:
         if rename:
             renamed_to = self._rename_file(path, entry.vendor, entry.date, entry.total)
         return ProcessResult(status="ok", message="processed", ledger_entry=entry, receipt=receipt, renamed_to=renamed_to)
+
+    def scan_receipt(
+        self,
+        *,
+        file_path: str | None = None,
+        image_url: str | None = None,
+        image_base64: str | None = None,
+        raw_text: str | None = None,
+        auto_save: bool = False,
+        save_threshold: str | None = None,
+        project_id: str | None = None,
+        status: str | None = None,
+        image_type: str | None = None,
+        idempotency_key: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        ephemeral: bool = False,
+    ) -> dict[str, Any]:
+        return self._api_client.scan_receipt(
+            file_path=file_path,
+            image_url=image_url,
+            image_base64=image_base64,
+            raw_text=raw_text,
+            auto_save=auto_save,
+            save_threshold=save_threshold,
+            project_id=project_id,
+            status=status,
+            image_type=image_type,
+            idempotency_key=idempotency_key,
+            metadata=metadata,
+            ephemeral=ephemeral,
+        )
+
+    def get_scan(self, scan_id: str) -> dict[str, Any]:
+        return self._api_client.get_scan(scan_id)
+
+    def create_transaction(self, transaction: dict[str, Any]) -> dict[str, Any]:
+        return self._api_client.create_transaction(transaction)
+
+    def list_transactions(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        transaction_type: str | None = None,
+        category: str | None = None,
+        vendor: str | None = None,
+        payment_method: str | None = None,
+        amount_min: float | int | None = None,
+        amount_max: float | int | None = None,
+        status: str | None = None,
+        project_id: str | None = None,
+        source: str | None = None,
+        agent_name: str | None = None,
+        sort_by: str | None = None,
+        sort_order: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.list_transactions(
+            start_date=start_date,
+            end_date=end_date,
+            transaction_type=transaction_type,
+            category=category,
+            vendor=vendor,
+            payment_method=payment_method,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            status=status,
+            project_id=project_id,
+            source=source,
+            agent_name=agent_name,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    def get_transaction(self, transaction_id: str) -> dict[str, Any]:
+        return self._api_client.get_transaction(transaction_id)
+
+    def update_transaction(self, transaction_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        return self._api_client.update_transaction(transaction_id, changes)
+
+    def delete_transaction(self, transaction_id: str) -> dict[str, Any]:
+        return self._api_client.delete_transaction(transaction_id)
+
+    def import_transactions(
+        self,
+        *,
+        transactions: list[dict[str, Any]] | None = None,
+        csv_text: str | None = None,
+        csv_file_path: str | None = None,
+        all_or_nothing: bool | None = None,
+        project_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.import_transactions(
+            transactions=transactions,
+            csv_text=csv_text,
+            csv_file_path=csv_file_path,
+            all_or_nothing=all_or_nothing,
+            project_id=project_id,
+        )
+
+    def submit_batch_scans(
+        self,
+        *,
+        items: list[dict[str, Any]],
+        auto_save: bool = False,
+        save_threshold: str | None = None,
+        project_id: str | None = None,
+        webhook_url: str | None = None,
+        webhook_secret: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.submit_batch_scans(
+            items=items,
+            auto_save=auto_save,
+            save_threshold=save_threshold,
+            project_id=project_id,
+            webhook_url=webhook_url,
+            webhook_secret=webhook_secret,
+        )
+
+    def get_batch_scan_status(self, job_id: str) -> dict[str, Any]:
+        return self._api_client.get_batch_scan_status(job_id)
+
+    def get_batch_scan_results(self, job_id: str) -> dict[str, Any]:
+        return self._api_client.get_batch_scan_results(job_id)
+
+    def list_projects(
+        self,
+        *,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.list_projects(status=status, limit=limit, offset=offset, format=format)
+
+    def create_project(self, name: str, description: str | None = None) -> dict[str, Any]:
+        return self._api_client.create_project(name=name, description=description)
+
+    def update_project(
+        self,
+        project_id: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.update_project(project_id, name=name, description=description, status=status)
+
+    def delete_project(self, project_id: str) -> dict[str, Any]:
+        return self._api_client.delete_project(project_id)
+
+    def get_summary(
+        self,
+        *,
+        period: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        project_id: str | None = None,
+        group_by: str | None = None,
+    ) -> dict[str, Any]:
+        kwargs = {
+            "period": period,
+            "start_date": start_date,
+            "end_date": end_date,
+            "project_id": project_id,
+            "group_by": group_by,
+        }
+        return self._api_client.get_summary(**{key: value for key, value in kwargs.items() if value is not None})
+
+    def create_webhook(self, url: str, events: list[str], secret: str | None = None) -> dict[str, Any]:
+        return self._api_client.create_webhook(url=url, events=events, secret=secret)
+
+    def list_webhooks(self) -> dict[str, Any]:
+        return self._api_client.list_webhooks()
+
+    def delete_webhook(self, webhook_id: str) -> dict[str, Any]:
+        return self._api_client.delete_webhook(webhook_id)
+
+    def create_rule(
+        self,
+        *,
+        rule_type: str,
+        condition: dict[str, Any],
+        action: dict[str, Any],
+        priority: int | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.create_rule(rule_type=rule_type, condition=condition, action=action, priority=priority)
+
+    def list_rules(self, *, limit: int | None = None, offset: int | None = None) -> dict[str, Any]:
+        return self._api_client.list_rules(limit=limit, offset=offset)
+
+    def delete_rule(self, rule_id: str) -> dict[str, Any]:
+        return self._api_client.delete_rule(rule_id)
+
+    def get_usage(self, *, period: str | None = None, breakdown: str | None = None) -> dict[str, Any]:
+        return self._api_client.get_usage(period=period, breakdown=breakdown)
+
+    def export_transactions(self, *, format: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._api_client.export_transactions(format=format, filters=filters)
 
     def process_receipts_batch(
         self,
@@ -126,4 +331,3 @@ class ReciteTools:
             return str(target)
         path.rename(target)
         return str(target)
-
