@@ -47,7 +47,7 @@ class ApiClient:
                 category=str(category) if category is not None else None,
             )
         except Exception as exc:  # noqa: BLE001
-            raise ApiClientError(f"Invalid response payload: {payload}") from exc
+            raise ApiClientError(f"Invalid response payload: {data}") from exc
 
     def scan_receipt(
         self,
@@ -498,19 +498,15 @@ class ApiClient:
 
     def _dispatch_request(self, **kwargs: Any) -> Any:
         request = getattr(self._session, "request", None)
-        res = None
         if callable(request):
             res = request(**kwargs)
-        if res: # Only return if res was successfully obtained from the primary request method
-            return res
+            if res is not None:
+                return res
 
         method_name = str(kwargs["method"]).lower()
-        print(f"DEBUG: _dispatch_request falling back to {method_name}")
         fallback = getattr(self._session, method_name, None)
         if callable(fallback):
-            res = fallback(kwargs["url"], **{k: v for k, v in kwargs.items() if k not in ("method", "url")})
-            print(f"DEBUG: _dispatch_request fallback res={res}")
-            return res
+            return fallback(kwargs["url"], **{k: v for k, v in kwargs.items() if k not in ("method", "url")})
         raise ApiClientError("Configured session does not support HTTP requests.")
 
 
