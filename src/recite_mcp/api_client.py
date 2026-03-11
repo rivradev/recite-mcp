@@ -22,18 +22,17 @@ class ApiClient:
         self._session = session if session is not None else requests.Session()
 
     def process_receipt(self, file_path: Path) -> ReceiptRecord:
-        payload = self.scan_receipt(file_path=file_path, auto_save=False)
-        data = payload.get("data", payload) if isinstance(payload, dict) else payload
+        data = self.scan_receipt(file_path=file_path, auto_save=False)
         if not isinstance(data, dict):
-            raise ApiClientError(f"Invalid response payload: {payload}")
+            raise ApiClientError(f"Invalid response payload: {data}")
 
         extracted = data.get("extracted_data", data)
         if not isinstance(extracted, dict):
-            raise ApiClientError(f"Invalid response payload: {payload}")
+            raise ApiClientError(f"Invalid response payload: {data}")
 
         vendor = _pick_first(extracted, "vendor", "merchant_name", "merchant", "store_name")
         date = _pick_first(extracted, "date", "transaction_date", "purchase_date")
-        total = _pick_first(extracted, "total", "amount", "total_amount")
+        total = _pick_first(extracted, "total", "amount", "total_amount", default=0.0)
         tax = _pick_first(extracted, "tax", "sales_tax", "tax_amount", default=0.0)
         currency = _pick_first(extracted, "currency", "currency_code", default="USD")
         category = _pick_first(extracted, "category", "category_name", default=None)
@@ -66,6 +65,24 @@ class ApiClient:
         metadata: dict[str, Any] | None = None,
         ephemeral: bool = False,
     ) -> dict[str, Any]:
+        """Scan a receipt using the Recite API to extract financial data.
+
+        Provide exactly one input: file_path, image_url, image_base64, or raw_text.
+        
+        Args:
+            file_path: Local path to an image.
+            image_url: Publicly accessible URL (must use https).
+            image_base64: Base64-encoded image data.
+            raw_text: Pre-extracted text.
+            auto_save: Auto-create a transaction if successful. Requires project_id.
+            save_threshold: Confidence threshold for auto-saving.
+            project_id: Project UUID. Required if auto_save is True.
+            status: Target status of the transaction.
+            image_type: MIME type hint for the image.
+            idempotency_key: Key to prevent duplicate processing.
+            metadata: Custom key-value data.
+            ephemeral: Process without saving scan records server-side. Cannot be True if auto_save is True.
+        """
         payload = self._build_scan_payload(
             file_path=file_path,
             image_url=image_url,
@@ -151,9 +168,20 @@ class ApiClient:
         all_or_nothing: bool | None = None,
         project_id: str | None = None,
     ) -> dict[str, Any]:
+        """Import multiple transactions at once.
+
+        Provide exactly one data source: transactions (list), csv_text, or csv_file_path.
+        
+        Args:
+            transactions: List of transaction objects to import.
+            csv_text: Raw CSV string content.
+            csv_file_path: Local path to a CSV file.
+            all_or_nothing: If True, fails the entire import if any transaction fails.
+            project_id: Apply all transactions to this project UUID.
+        """
         provided = [
             transactions is not None,
-            bool(csv_text),
+            csv_text is not None,
             csv_file_path is not None,
         ]
         if sum(provided) != 1:
@@ -167,20 +195,33 @@ class ApiClient:
                 payload["project_id"] = project_id
             return self._request("POST", "/import/transactions", json=payload)
 
-        csv_body = csv_text if csv_text is not None else _read_text_file(Path(csv_file_path).expanduser())
         params = _drop_none(
             {
                 "all_or_nothing": _bool_query_param(all_or_nothing) if all_or_nothing is not None else None,
                 "project_id": project_id,
             }
         )
-        return self._request(
-            "POST",
-            "/import/transactions",
-            params=params,
-            data=csv_body,
-            headers={"Content-Type": "text/csv"},
-        )
+
+        if csv_text is not None:
+            return self._request(
+                "POST",
+                "/import/transactions",
+                params=params,
+                data=csv_text,
+                headers={"Content-Type": "text/csv"},
+            )
+
+        if csv_file_path is None:
+            raise ApiClientError("csv_file_path is missing")
+
+        with open(Path(csv_file_path).expanduser(), "rb") as f:
+            return self._request(
+                "POST",
+                "/import/transactions",
+                params=params,
+                data=f,
+                headers={"Content-Type": "text/csv"},
+            )
 
     def submit_batch_scans(
         self,
@@ -192,6 +233,17 @@ class ApiClient:
         webhook_url: str | None = None,
         webhook_secret: str | None = None,
     ) -> dict[str, Any]:
+        """Submit multiple receipts for asynchronous batch processing.
+        
+        Args:
+            items: List of 1-20 task items. Each must provide exactly one of 
+                   file_path, image_url, or image_base64.
+            auto_save: Auto-create transactions for successful scans.
+            save_threshold: Confidence threshold for auto-saving.
+            project_id: Apply all auto-saved transactions to this project UUID.
+            webhook_url: URL to call when batch completes.
+            webhook_secret: HMAC-SHA256 signature secret for the webhook.
+        """
         normalized_items = [self._normalize_batch_item(item) for item in items]
         payload: dict[str, Any] = {"items": normalized_items, "auto_save": auto_save}
         optional_fields = {
@@ -392,7 +444,7 @@ class ApiClient:
         *,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
-        data: str | None = None,
+        data: Any | None = None,
         headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         if not self._settings.api_key:
@@ -422,16 +474,22 @@ class ApiClient:
 
         if response.status_code == 204:
             return {"status": "ok"}
-
+            
         content_type = str(getattr(response, "headers", {}).get("Content-Type", "")).lower()
         if not content_type or "json" in content_type:
+            text = getattr(response, "text", "")
+            if not text:
+                return {"status": "ok"}
             try:
                 payload = response.json()
             except Exception as exc:  # noqa: BLE001
                 raise ApiClientError("Invalid JSON response from Recite API.") from exc
-
             if isinstance(payload, dict) and payload.get("success") is False:
                 raise ApiClientError(_extract_error_message_from_payload(payload))
+
+            if isinstance(payload, dict) and "data" in payload and payload.get("success") == True:
+                return payload["data"]
+
             if isinstance(payload, dict):
                 return payload
             return {"data": payload}
@@ -440,16 +498,19 @@ class ApiClient:
 
     def _dispatch_request(self, **kwargs: Any) -> Any:
         request = getattr(self._session, "request", None)
+        res = None
         if callable(request):
-            return request(**kwargs)
+            res = request(**kwargs)
+        if res: # Only return if res was successfully obtained from the primary request method
+            return res
 
         method_name = str(kwargs["method"]).lower()
+        print(f"DEBUG: _dispatch_request falling back to {method_name}")
         fallback = getattr(self._session, method_name, None)
         if callable(fallback):
-            call_kwargs = dict(kwargs)
-            url = str(call_kwargs.pop("url"))
-            call_kwargs.pop("method", None)
-            return fallback(url, **call_kwargs)
+            res = fallback(kwargs["url"], **{k: v for k, v in kwargs.items() if k not in ("method", "url")})
+            print(f"DEBUG: _dispatch_request fallback res={res}")
+            return res
         raise ApiClientError("Configured session does not support HTTP requests.")
 
 
@@ -475,12 +536,6 @@ def _quote_path(value: str) -> str:
 
 def _bool_query_param(value: bool) -> str:
     return "true" if value else "false"
-
-
-def _read_text_file(path: Path) -> str:
-    if not path.exists():
-        raise ApiClientError(f"Import file does not exist: {path}")
-    return path.read_text(encoding="utf-8")
 
 
 def _extract_error_message(response: Any) -> str:

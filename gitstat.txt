@@ -1,0 +1,13 @@
+9eb46f4 mcp changes
+ README.md                    |   10 +-
+ docs/API_REFERENCE.md        | 1434 ++++++++++++++++++++++++++++++++++
+ docs/MCP_REFERENCE.md        |  873 +++++++++++++++++++++
+ docs/Recite_APIs.md          | 1770 ++++++++++++++++++++++++++++++++++++++++++
+ src/recite_mcp/__init__.py   |    3 +-
+ src/recite_mcp/api_client.py |  498 +++++++++++-
+ src/recite_mcp/server.py     |  206 +++++
+ src/recite_mcp/tools.py      |  206 ++++-
+ tests/test_api_client.py     |  177 ++++-
+ tests/test_server.py         |   23 +
+ tests/test_tools.py          |   24 +
+ 11 files changed, 5177 insertions(+), 47 deletions(-)

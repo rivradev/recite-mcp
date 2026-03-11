@@ -1,0 +1,1281 @@
+commit 9eb46f4b366b9cedbc40b72e25c3113d9152ff11
+Author: rsflowin <rsflowin@gmail.com>
+Date:   Tue Mar 10 17:24:54 2026 -0700
+
+    mcp changes
+
+diff --git a/src/recite_mcp/__init__.py b/src/recite_mcp/__init__.py
+index 30bd16a..2326ef1 100644
+--- a/src/recite_mcp/__init__.py
++++ b/src/recite_mcp/__init__.py
+@@ -2,5 +2,4 @@
+ 
+ __all__ = ["__version__"]
+ 
+-__version__ = "0.1.0"
+-
++__version__ = "0.1.6"
+diff --git a/src/recite_mcp/api_client.py b/src/recite_mcp/api_client.py
+index 4d13c24..d95c04b 100644
+--- a/src/recite_mcp/api_client.py
++++ b/src/recite_mcp/api_client.py
+@@ -1,7 +1,10 @@
+ from __future__ import annotations
+ 
+ import base64
++import mimetypes
+ from pathlib import Path
++from typing import Any
++from urllib.parse import quote
+ 
+ import requests
+ 
+@@ -19,44 +22,21 @@ class ApiClient:
+         self._session = session if session is not None else requests.Session()
+ 
+     def process_receipt(self, file_path: Path) -> ReceiptRecord:
+-        if not file_path.exists():
+-            raise ApiClientError(f"Receipt file does not exist: {file_path}")
+-        if not self._settings.api_key:
+-            raise ApiClientError("Missing API key.")
+-
+-        image_base64 = base64.b64encode(file_path.read_bytes()).decode("ascii")
+-        try:
+-            response = self._session.post(  # type: ignore[attr-defined]
+-                f"{self._settings.api_base_url}/scan",
+-                headers={"Authorization": f"Bearer {self._settings.api_key}", "Content-Type": "application/json"},
+-                json={"image_base64": image_base64, "auto_save": False},
+-                timeout=self._settings.request_timeout_sec,
+-            )
+-        except Exception as exc:  # noqa: BLE001
+-            raise ApiClientError(f"Request failed: {exc}") from exc
+-
+-        if response.status_code >= 400:
+-            raise ApiClientError(f"Recite API error: {response.status_code}")
+-
+-        payload = response.json()
+-        if isinstance(payload, dict) and payload.get("success") is False:
+-            error = payload.get("error")
+-            if isinstance(error, dict):
+-                message = str(error.get("message", "Unknown API error"))
+-            else:
+-                message = str(error or "Unknown API error")
+-            raise ApiClientError(message)
+-
++        payload = self.scan_receipt(file_path=file_path, auto_save=False)
+         data = payload.get("data", payload) if isinstance(payload, dict) else payload
+         if not isinstance(data, dict):
+             raise ApiClientError(f"Invalid response payload: {payload}")
+ 
+-        vendor = _pick_first(data, "vendor", "merchant_name", "merchant", "store_name")
+-        date = _pick_first(data, "date", "transaction_date", "purchase_date")
+-        total = _pick_first(data, "total", "amount", "total_amount")
+-        tax = _pick_first(data, "tax", "sales_tax", "tax_amount", default=0.0)
+-        currency = _pick_first(data, "currency", "currency_code", default="USD")
+-        category = _pick_first(data, "category", "category_name", default=None)
++        extracted = data.get("extracted_data", data)
++        if not isinstance(extracted, dict):
++            raise ApiClientError(f"Invalid response payload: {payload}")
++
++        vendor = _pick_first(extracted, "vendor", "merchant_name", "merchant", "store_name")
++        date = _pick_first(extracted, "date", "transaction_date", "purchase_date")
++        total = _pick_first(extracted, "total", "amount", "total_amount")
++        tax = _pick_first(extracted, "tax", "sales_tax", "tax_amount", default=0.0)
++        currency = _pick_first(extracted, "currency", "currency_code", default="USD")
++        category = _pick_first(extracted, "category", "category_name", default=None)
+ 
+         try:
+             return ReceiptRecord(
+@@ -70,9 +50,457 @@ class ApiClient:
+         except Exception as exc:  # noqa: BLE001
+             raise ApiClientError(f"Invalid response payload: {payload}") from exc
+ 
++    def scan_receipt(
++        self,
++        *,
++        file_path: str | Path | None = None,
++        image_url: str | None = None,
++        image_base64: str | None = None,
++        raw_text: str | None = None,
++        auto_save: bool = False,
++        save_threshold: str | None = None,
++        project_id: str | None = None,
++        status: str | None = None,
++        image_type: str | None = None,
++        idempotency_key: str | None = None,
++        metadata: dict[str, Any] | None = None,
++        ephemeral: bool = False,
++    ) -> dict[str, Any]:
++        payload = self._build_scan_payload(
++            file_path=file_path,
++            image_url=image_url,
++            image_base64=image_base64,
++            raw_text=raw_text,
++            auto_save=auto_save,
++            save_threshold=save_threshold,
++            project_id=project_id,
++            status=status,
++            image_type=image_type,
++            idempotency_key=idempotency_key,
++            metadata=metadata,
++            ephemeral=ephemeral,
++        )
++        return self._request("POST", "/scan", json=payload)
++
++    def get_scan(self, scan_id: str) -> dict[str, Any]:
++        return self._request("GET", f"/scan/{_quote_path(scan_id)}")
++
++    def create_transaction(self, transaction: dict[str, Any]) -> dict[str, Any]:
++        return self._request("POST", "/transactions", json=_drop_none(transaction))
++
++    def list_transactions(
++        self,
++        *,
++        start_date: str | None = None,
++        end_date: str | None = None,
++        transaction_type: str | None = None,
++        category: str | None = None,
++        vendor: str | None = None,
++        payment_method: str | None = None,
++        amount_min: float | int | None = None,
++        amount_max: float | int | None = None,
++        status: str | None = None,
++        project_id: str | None = None,
++        source: str | None = None,
++        agent_name: str | None = None,
++        sort_by: str | None = None,
++        sort_order: str | None = None,
++        limit: int | None = None,
++        offset: int | None = None,
++        format: str | None = None,
++    ) -> dict[str, Any]:
++        params = _drop_none(
++            {
++                "start_date": start_date,
++                "end_date": end_date,
++                "transaction_type": transaction_type,
++                "category": category,
++                "vendor": vendor,
++                "payment_method": payment_method,
++                "amount_min": amount_min,
++                "amount_max": amount_max,
++                "status": status,
++                "project_id": project_id,
++                "source": source,
++                "agent_name": agent_name,
++                "sort_by": sort_by,
++                "sort_order": sort_order,
++                "limit": limit,
++                "offset": offset,
++                "format": format,
++            }
++        )
++        return self._request("GET", "/transactions", params=params)
++
++    def get_transaction(self, transaction_id: str) -> dict[str, Any]:
++        return self._request("GET", f"/transactions/{_quote_path(transaction_id)}")
++
++    def update_transaction(self, transaction_id: str, changes: dict[str, Any]) -> dict[str, Any]:
++        return self._request("PATCH", f"/transactions/{_quote_path(transaction_id)}", json=_drop_none(changes))
++
++    def delete_transaction(self, transaction_id: str) -> dict[str, Any]:
++        self._request("DELETE", f"/transactions/{_quote_path(transaction_id)}")
++        return {"status": "deleted", "transaction_id": transaction_id}
++
++    def import_transactions(
++        self,
++        *,
++        transactions: list[dict[str, Any]] | None = None,
++        csv_text: str | None = None,
++        csv_file_path: str | Path | None = None,
++        all_or_nothing: bool | None = None,
++        project_id: str | None = None,
++    ) -> dict[str, Any]:
++        provided = [
++            transactions is not None,
++            bool(csv_text),
++            csv_file_path is not None,
++        ]
++        if sum(provided) != 1:
++            raise ApiClientError("Provide exactly one of transactions, csv_text, or csv_file_path.")
++
++        if transactions is not None:
++            payload = {"transactions": transactions}
++            if all_or_nothing is not None:
++                payload["all_or_nothing"] = all_or_nothing
++            if project_id is not None:
++                payload["project_id"] = project_id
++            return self._request("POST", "/import/transactions", json=payload)
++
++        csv_body = csv_text if csv_text is not None else _read_text_file(Path(csv_file_path).expanduser())
++        params = _drop_none(
++            {
++                "all_or_nothing": _bool_query_param(all_or_nothing) if all_or_nothing is not None else None,
++                "project_id": project_id,
++            }
++        )
++        return self._request(
++            "POST",
++            "/import/transactions",
++            params=params,
++            data=csv_body,
++            headers={"Content-Type": "text/csv"},
++        )
++
++    def submit_batch_scans(
++        self,
++        *,
++        items: list[dict[str, Any]],
++        auto_save: bool = False,
++        save_threshold: str | None = None,
++        project_id: str | None = None,
++        webhook_url: str | None = None,
++        webhook_secret: str | None = None,
++    ) -> dict[str, Any]:
++        normalized_items = [self._normalize_batch_item(item) for item in items]
++        payload: dict[str, Any] = {"items": normalized_items, "auto_save": auto_save}
++        optional_fields = {
++            "save_threshold": save_threshold,
++            "project_id": project_id,
++            "webhook_url": webhook_url,
++            "webhook_secret": webhook_secret,
++        }
++        payload.update(_drop_none(optional_fields))
++        return self._request("POST", "/batch/scans", json=payload)
++
++    def get_batch_scan_status(self, job_id: str) -> dict[str, Any]:
++        return self._request("GET", f"/batch/scans/{_quote_path(job_id)}")
++
++    def get_batch_scan_results(self, job_id: str) -> dict[str, Any]:
++        return self._request("GET", f"/batch/scans/{_quote_path(job_id)}/results")
++
++    def list_projects(
++        self,
++        *,
++        status: str | None = None,
++        limit: int | None = None,
++        offset: int | None = None,
++        format: str | None = None,
++    ) -> dict[str, Any]:
++        params = _drop_none({"status": status, "limit": limit, "offset": offset, "format": format})
++        return self._request("GET", "/projects", params=params)
++
++    def create_project(self, *, name: str, description: str | None = None) -> dict[str, Any]:
++        return self._request("POST", "/projects", json=_drop_none({"name": name, "description": description}))
++
++    def update_project(
++        self,
++        project_id: str,
++        *,
++        name: str | None = None,
++        description: str | None = None,
++        status: str | None = None,
++    ) -> dict[str, Any]:
++        payload = _drop_none({"name": name, "description": description, "status": status})
++        return self._request("PATCH", f"/projects/{_quote_path(project_id)}", json=payload)
++
++    def delete_project(self, project_id: str) -> dict[str, Any]:
++        self._request("DELETE", f"/projects/{_quote_path(project_id)}")
++        return {"status": "deleted", "project_id": project_id}
++
++    def get_summary(
++        self,
++        *,
++        period: str | None = None,
++        start_date: str | None = None,
++        end_date: str | None = None,
++        project_id: str | None = None,
++        group_by: str | None = None,
++    ) -> dict[str, Any]:
++        params = _drop_none(
++            {
++                "period": period,
++                "start_date": start_date,
++                "end_date": end_date,
++                "project_id": project_id,
++                "group_by": group_by,
++            }
++        )
++        return self._request("GET", "/summary", params=params)
++
++    def create_webhook(self, *, url: str, events: list[str], secret: str | None = None) -> dict[str, Any]:
++        return self._request("POST", "/webhooks", json=_drop_none({"url": url, "events": events, "secret": secret}))
++
++    def list_webhooks(self) -> dict[str, Any]:
++        return self._request("GET", "/webhooks")
++
++    def delete_webhook(self, webhook_id: str) -> dict[str, Any]:
++        self._request("DELETE", f"/webhooks/{_quote_path(webhook_id)}")
++        return {"status": "deleted", "webhook_id": webhook_id}
++
++    def create_rule(
++        self,
++        *,
++        rule_type: str,
++        condition: dict[str, Any],
++        action: dict[str, Any],
++        priority: int | None = None,
++    ) -> dict[str, Any]:
++        payload = {"rule_type": rule_type, "condition": condition, "action": action}
++        if priority is not None:
++            payload["priority"] = priority
++        return self._request("POST", "/rules", json=payload)
++
++    def list_rules(self, *, limit: int | None = None, offset: int | None = None) -> dict[str, Any]:
++        return self._request("GET", "/rules", params=_drop_none({"limit": limit, "offset": offset}))
++
++    def delete_rule(self, rule_id: str) -> dict[str, Any]:
++        self._request("DELETE", f"/rules/{_quote_path(rule_id)}")
++        return {"status": "deleted", "rule_id": rule_id}
++
++    def get_usage(self, *, period: str | None = None, breakdown: str | None = None) -> dict[str, Any]:
++        return self._request("GET", "/usage", params=_drop_none({"period": period, "breakdown": breakdown}))
++
++    def export_transactions(self, *, format: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
++        return self._request("POST", "/export", json=_drop_none({"format": format, "filters": filters}))
++
++    def _build_scan_payload(
++        self,
++        *,
++        file_path: str | Path | None,
++        image_url: str | None,
++        image_base64: str | None,
++        raw_text: str | None,
++        auto_save: bool,
++        save_threshold: str | None,
++        project_id: str | None,
++        status: str | None,
++        image_type: str | None,
++        idempotency_key: str | None,
++        metadata: dict[str, Any] | None,
++        ephemeral: bool,
++    ) -> dict[str, Any]:
++        provided_inputs = [
++            file_path is not None,
++            image_url is not None,
++            image_base64 is not None,
++            raw_text is not None,
++        ]
++        if sum(provided_inputs) != 1:
++            raise ApiClientError("Provide exactly one of file_path, image_url, image_base64, or raw_text.")
++        if ephemeral and auto_save:
++            raise ApiClientError("ephemeral and auto_save cannot both be true.")
++        if auto_save and not project_id:
++            raise ApiClientError("project_id is required when auto_save is true.")
++        if image_url is not None and not image_url.startswith("https://"):
++            raise ApiClientError("image_url must use https://.")
++
++        payload: dict[str, Any] = {"auto_save": auto_save, "ephemeral": ephemeral}
++
++        if file_path is not None:
++            resolved = Path(file_path).expanduser()
++            encoded = self._encode_image_file(resolved)
++            payload["image_base64"] = encoded
++            if image_type is None:
++                image_type = _guess_image_type(resolved)
++        elif image_url is not None:
++            payload["image_url"] = image_url
++        elif image_base64 is not None:
++            payload["image_base64"] = image_base64
++        else:
++            payload["raw_text"] = raw_text
+ 
+-def _pick_first(payload: dict, *keys: str, default: object | None = None) -> object | None:
++        payload.update(
++            _drop_none(
++                {
++                    "save_threshold": save_threshold,
++                    "project_id": project_id,
++                    "status": status,
++                    "image_type": image_type,
++                    "idempotency_key": idempotency_key,
++                    "metadata": metadata,
++                }
++            )
++        )
++        return payload
++
++    def _normalize_batch_item(self, item: dict[str, Any]) -> dict[str, Any]:
++        if not isinstance(item, dict):
++            raise ApiClientError("Each batch item must be an object.")
++
++        normalized = dict(item)
++        file_path = normalized.pop("file_path", None)
++        image_url = normalized.get("image_url")
++        image_base64 = normalized.get("image_base64")
++
++        provided_inputs = [
++            file_path is not None,
++            image_url is not None,
++            image_base64 is not None,
++        ]
++        if sum(provided_inputs) != 1:
++            raise ApiClientError("Each batch item must provide exactly one of file_path, image_url, or image_base64.")
++
++        if file_path is not None:
++            resolved = Path(file_path).expanduser()
++            normalized["image_base64"] = self._encode_image_file(resolved)
++            normalized.setdefault("image_type", _guess_image_type(resolved))
++        elif image_url is not None and not str(image_url).startswith("https://"):
++            raise ApiClientError("Batch image_url values must use https://.")
++
++        return _drop_none(normalized)
++
++    def _encode_image_file(self, file_path: Path) -> str:
++        if not file_path.exists():
++            raise ApiClientError(f"Receipt file does not exist: {file_path}")
++        return base64.b64encode(file_path.read_bytes()).decode("ascii")
++
++    def _request(
++        self,
++        method: str,
++        path: str,
++        *,
++        params: dict[str, Any] | None = None,
++        json: dict[str, Any] | None = None,
++        data: str | None = None,
++        headers: dict[str, str] | None = None,
++    ) -> dict[str, Any]:
++        if not self._settings.api_key:
++            raise ApiClientError("Missing API key.")
++
++        request_headers = {"Authorization": f"Bearer {self._settings.api_key}"}
++        if headers is not None:
++            request_headers.update(headers)
++        elif json is not None:
++            request_headers["Content-Type"] = "application/json"
++
++        try:
++            response = self._dispatch_request(
++                method=method,
++                url=f"{self._settings.api_base_url}{path}",
++                headers=request_headers,
++                params=params,
++                json=json,
++                data=data,
++                timeout=self._settings.request_timeout_sec,
++            )
++        except Exception as exc:  # noqa: BLE001
++            raise ApiClientError(f"Request failed: {exc}") from exc
++
++        if response.status_code >= 400:
++            raise ApiClientError(_extract_error_message(response))
++
++        if response.status_code == 204:
++            return {"status": "ok"}
++
++        content_type = str(getattr(response, "headers", {}).get("Content-Type", "")).lower()
++        if not content_type or "json" in content_type:
++            try:
++                payload = response.json()
++            except Exception as exc:  # noqa: BLE001
++                raise ApiClientError("Invalid JSON response from Recite API.") from exc
++
++            if isinstance(payload, dict) and payload.get("success") is False:
++                raise ApiClientError(_extract_error_message_from_payload(payload))
++            if isinstance(payload, dict):
++                return payload
++            return {"data": payload}
++
++        return {"content_type": content_type, "body": getattr(response, "text", "")}
++
++    def _dispatch_request(self, **kwargs: Any) -> Any:
++        request = getattr(self._session, "request", None)
++        if callable(request):
++            return request(**kwargs)
++
++        method_name = str(kwargs["method"]).lower()
++        fallback = getattr(self._session, method_name, None)
++        if callable(fallback):
++            call_kwargs = dict(kwargs)
++            url = str(call_kwargs.pop("url"))
++            call_kwargs.pop("method", None)
++            return fallback(url, **call_kwargs)
++        raise ApiClientError("Configured session does not support HTTP requests.")
++
++
++def _drop_none(payload: dict[str, Any]) -> dict[str, Any]:
++    return {key: value for key, value in payload.items() if value is not None}
++
++
++def _pick_first(payload: dict[str, Any], *keys: str, default: object | None = None) -> object | None:
+     for key in keys:
+         if key in payload and payload[key] not in (None, ""):
+             return payload[key]
+     return default
++
++
++def _guess_image_type(path: Path) -> str | None:
++    guessed, _ = mimetypes.guess_type(path.name)
++    return guessed
++
++
++def _quote_path(value: str) -> str:
++    return quote(value, safe="")
++
++
++def _bool_query_param(value: bool) -> str:
++    return "true" if value else "false"
++
++
++def _read_text_file(path: Path) -> str:
++    if not path.exists():
++        raise ApiClientError(f"Import file does not exist: {path}")
++    return path.read_text(encoding="utf-8")
++
++
++def _extract_error_message(response: Any) -> str:
++    try:
++        payload = response.json()
++    except Exception:  # noqa: BLE001
++        text = str(getattr(response, "text", "")).strip()
++        if text:
++            return f"Recite API error ({response.status_code}): {text}"
++        return f"Recite API error: {response.status_code}"
++
++    if isinstance(payload, dict):
++        return _extract_error_message_from_payload(payload)
++    return f"Recite API error: {response.status_code}"
++
++
++def _extract_error_message_from_payload(payload: dict[str, Any]) -> str:
++    error = payload.get("error")
++    if isinstance(error, dict):
++        return str(error.get("message") or error.get("code") or "Unknown API error")
++    if error:
++        return str(error)
++    return "Unknown API error"
+diff --git a/src/recite_mcp/server.py b/src/recite_mcp/server.py
+index 3e069bf..facd03f 100644
+--- a/src/recite_mcp/server.py
++++ b/src/recite_mcp/server.py
+@@ -52,6 +52,212 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
+     def process_receipts_batch(input_dir: str, rename: bool = False, dry_run: bool = True, recursive: bool = True) -> dict:
+         return _serialize(tools.process_receipts_batch(input_dir=input_dir, rename=rename, dry_run=dry_run, recursive=recursive))
+ 
++    @server.tool("scan_receipt")
++    def scan_receipt(
++        file_path: str | None = None,
++        image_url: str | None = None,
++        image_base64: str | None = None,
++        raw_text: str | None = None,
++        auto_save: bool = False,
++        save_threshold: str | None = None,
++        project_id: str | None = None,
++        status: str | None = None,
++        image_type: str | None = None,
++        idempotency_key: str | None = None,
++        metadata: dict | None = None,
++        ephemeral: bool = False,
++    ) -> dict:
++        return tools.scan_receipt(
++            file_path=file_path,
++            image_url=image_url,
++            image_base64=image_base64,
++            raw_text=raw_text,
++            auto_save=auto_save,
++            save_threshold=save_threshold,
++            project_id=project_id,
++            status=status,
++            image_type=image_type,
++            idempotency_key=idempotency_key,
++            metadata=metadata,
++            ephemeral=ephemeral,
++        )
++
++    @server.tool("get_scan")
++    def get_scan(scan_id: str) -> dict:
++        return tools.get_scan(scan_id)
++
++    @server.tool("create_transaction")
++    def create_transaction(transaction: dict) -> dict:
++        return tools.create_transaction(transaction)
++
++    @server.tool("list_transactions")
++    def list_transactions(
++        start_date: str | None = None,
++        end_date: str | None = None,
++        transaction_type: str | None = None,
++        category: str | None = None,
++        vendor: str | None = None,
++        payment_method: str | None = None,
++        amount_min: float | int | None = None,
++        amount_max: float | int | None = None,
++        status: str | None = None,
++        project_id: str | None = None,
++        source: str | None = None,
++        agent_name: str | None = None,
++        sort_by: str | None = None,
++        sort_order: str | None = None,
++        limit: int | None = None,
++        offset: int | None = None,
++        format: str | None = None,
++    ) -> dict:
++        return tools.list_transactions(
++            start_date=start_date,
++            end_date=end_date,
++            transaction_type=transaction_type,
++            category=category,
++            vendor=vendor,
++            payment_method=payment_method,
++            amount_min=amount_min,
++            amount_max=amount_max,
++            status=status,
++            project_id=project_id,
++            source=source,
++            agent_name=agent_name,
++            sort_by=sort_by,
++            sort_order=sort_order,
++            limit=limit,
++            offset=offset,
++            format=format,
++        )
++
++    @server.tool("get_transaction")
++    def get_transaction(transaction_id: str) -> dict:
++        return tools.get_transaction(transaction_id)
++
++    @server.tool("update_transaction")
++    def update_transaction(transaction_id: str, changes: dict) -> dict:
++        return tools.update_transaction(transaction_id, changes)
++
++    @server.tool("delete_transaction")
++    def delete_transaction(transaction_id: str) -> dict:
++        return tools.delete_transaction(transaction_id)
++
++    @server.tool("import_transactions")
++    def import_transactions(
++        transactions: list[dict] | None = None,
++        csv_text: str | None = None,
++        csv_file_path: str | None = None,
++        all_or_nothing: bool | None = None,
++        project_id: str | None = None,
++    ) -> dict:
++        return tools.import_transactions(
++            transactions=transactions,
++            csv_text=csv_text,
++            csv_file_path=csv_file_path,
++            all_or_nothing=all_or_nothing,
++            project_id=project_id,
++        )
++
++    @server.tool("submit_batch_scans")
++    def submit_batch_scans(
++        items: list[dict],
++        auto_save: bool = False,
++        save_threshold: str | None = None,
++        project_id: str | None = None,
++        webhook_url: str | None = None,
++        webhook_secret: str | None = None,
++    ) -> dict:
++        return tools.submit_batch_scans(
++            items=items,
++            auto_save=auto_save,
++            save_threshold=save_threshold,
++            project_id=project_id,
++            webhook_url=webhook_url,
++            webhook_secret=webhook_secret,
++        )
++
++    @server.tool("get_batch_scan_status")
++    def get_batch_scan_status(job_id: str) -> dict:
++        return tools.get_batch_scan_status(job_id)
++
++    @server.tool("get_batch_scan_results")
++    def get_batch_scan_results(job_id: str) -> dict:
++        return tools.get_batch_scan_results(job_id)
++
++    @server.tool("list_projects")
++    def list_projects(
++        status: str | None = None,
++        limit: int | None = None,
++        offset: int | None = None,
++        format: str | None = None,
++    ) -> dict:
++        return tools.list_projects(status=status, limit=limit, offset=offset, format=format)
++
++    @server.tool("create_project")
++    def create_project(name: str, description: str | None = None) -> dict:
++        return tools.create_project(name=name, description=description)
++
++    @server.tool("update_project")
++    def update_project(
++        project_id: str,
++        name: str | None = None,
++        description: str | None = None,
++        status: str | None = None,
++    ) -> dict:
++        return tools.update_project(project_id, name=name, description=description, status=status)
++
++    @server.tool("delete_project")
++    def delete_project(project_id: str) -> dict:
++        return tools.delete_project(project_id)
++
++    @server.tool("get_summary")
++    def get_summary(
++        period: str | None = None,
++        start_date: str | None = None,
++        end_date: str | None = None,
++        project_id: str | None = None,
++        group_by: str | None = None,
++    ) -> dict:
++        return tools.get_summary(
++            period=period,
++            start_date=start_date,
++            end_date=end_date,
++            project_id=project_id,
++            group_by=group_by,
++        )
++
++    @server.tool("create_webhook")
++    def create_webhook(url: str, events: list[str], secret: str | None = None) -> dict:
++        return tools.create_webhook(url=url, events=events, secret=secret)
++
++    @server.tool("list_webhooks")
++    def list_webhooks() -> dict:
++        return tools.list_webhooks()
++
++    @server.tool("delete_webhook")
++    def delete_webhook(webhook_id: str) -> dict:
++        return tools.delete_webhook(webhook_id)
++
++    @server.tool("create_rule")
++    def create_rule(rule_type: str, condition: dict, action: dict, priority: int | None = None) -> dict:
++        return tools.create_rule(rule_type=rule_type, condition=condition, action=action, priority=priority)
++
++    @server.tool("list_rules")
++    def list_rules(limit: int | None = None, offset: int | None = None) -> dict:
++        return tools.list_rules(limit=limit, offset=offset)
++
++    @server.tool("delete_rule")
++    def delete_rule(rule_id: str) -> dict:
++        return tools.delete_rule(rule_id)
++
++    @server.tool("get_usage")
++    def get_usage(period: str | None = None, breakdown: str | None = None) -> dict:
++        return tools.get_usage(period=period, breakdown=breakdown)
++
++    @server.tool("export_transactions")
++    def export_transactions(format: str, filters: dict | None = None) -> dict:
++        return tools.export_transactions(format=format, filters=filters)
++
+     @server.tool("update_memory")
+     def update_memory(instruction: str, tags: list[str] | None = None) -> dict:
+         return tools.update_memory(instruction=instruction, tags=tags)
+diff --git a/src/recite_mcp/tools.py b/src/recite_mcp/tools.py
+index b257634..3529626 100644
+--- a/src/recite_mcp/tools.py
++++ b/src/recite_mcp/tools.py
+@@ -2,6 +2,7 @@ from __future__ import annotations
+ 
+ from dataclasses import asdict
+ from pathlib import Path
++from typing import Any
+ 
+ from recite_mcp.api_client import ApiClient
+ from recite_mcp.config import Settings
+@@ -56,6 +57,210 @@ class ReciteTools:
+             renamed_to = self._rename_file(path, entry.vendor, entry.date, entry.total)
+         return ProcessResult(status="ok", message="processed", ledger_entry=entry, receipt=receipt, renamed_to=renamed_to)
+ 
++    def scan_receipt(
++        self,
++        *,
++        file_path: str | None = None,
++        image_url: str | None = None,
++        image_base64: str | None = None,
++        raw_text: str | None = None,
++        auto_save: bool = False,
++        save_threshold: str | None = None,
++        project_id: str | None = None,
++        status: str | None = None,
++        image_type: str | None = None,
++        idempotency_key: str | None = None,
++        metadata: dict[str, Any] | None = None,
++        ephemeral: bool = False,
++    ) -> dict[str, Any]:
++        return self._api_client.scan_receipt(
++            file_path=file_path,
++            image_url=image_url,
++            image_base64=image_base64,
++            raw_text=raw_text,
++            auto_save=auto_save,
++            save_threshold=save_threshold,
++            project_id=project_id,
++            status=status,
++            image_type=image_type,
++            idempotency_key=idempotency_key,
++            metadata=metadata,
++            ephemeral=ephemeral,
++        )
++
++    def get_scan(self, scan_id: str) -> dict[str, Any]:
++        return self._api_client.get_scan(scan_id)
++
++    def create_transaction(self, transaction: dict[str, Any]) -> dict[str, Any]:
++        return self._api_client.create_transaction(transaction)
++
++    def list_transactions(
++        self,
++        *,
++        start_date: str | None = None,
++        end_date: str | None = None,
++        transaction_type: str | None = None,
++        category: str | None = None,
++        vendor: str | None = None,
++        payment_method: str | None = None,
++        amount_min: float | int | None = None,
++        amount_max: float | int | None = None,
++        status: str | None = None,
++        project_id: str | None = None,
++        source: str | None = None,
++        agent_name: str | None = None,
++        sort_by: str | None = None,
++        sort_order: str | None = None,
++        limit: int | None = None,
++        offset: int | None = None,
++        format: str | None = None,
++    ) -> dict[str, Any]:
++        return self._api_client.list_transactions(
++            start_date=start_date,
++            end_date=end_date,
++            transaction_type=transaction_type,
++            category=category,
++            vendor=vendor,
++            payment_method=payment_method,
++            amount_min=amount_min,
++            amount_max=amount_max,
++            status=status,
++            project_id=project_id,
++            source=source,
++            agent_name=agent_name,
++            sort_by=sort_by,
++            sort_order=sort_order,
++            limit=limit,
++            offset=offset,
++            format=format,
++        )
++
++    def get_transaction(self, transaction_id: str) -> dict[str, Any]:
++        return self._api_client.get_transaction(transaction_id)
++
++    def update_transaction(self, transaction_id: str, changes: dict[str, Any]) -> dict[str, Any]:
++        return self._api_client.update_transaction(transaction_id, changes)
++
++    def delete_transaction(self, transaction_id: str) -> dict[str, Any]:
++        return self._api_client.delete_transaction(transaction_id)
++
++    def import_transactions(
++        self,
++        *,
++        transactions: list[dict[str, Any]] | None = None,
++        csv_text: str | None = None,
++        csv_file_path: str | None = None,
++        all_or_nothing: bool | None = None,
++        project_id: str | None = None,
++    ) -> dict[str, Any]:
++        return self._api_client.import_transactions(
++            transactions=transactions,
++            csv_text=csv_text,
++            csv_file_path=csv_file_path,
++            all_or_nothing=all_or_nothing,
++            project_id=project_id,
++        )
++
++    def submit_batch_scans(
++        self,
++        *,
++        items: list[dict[str, Any]],
++        auto_save: bool = False,
++        save_threshold: str | None = None,
++        project_id: str | None = None,
++        webhook_url: str | None = None,
++        webhook_secret: str | None = None,
++    ) -> dict[str, Any]:
++        return self._api_client.submit_batch_scans(
++            items=items,
++            auto_save=auto_save,
++            save_threshold=save_threshold,
++            project_id=project_id,
++            webhook_url=webhook_url,
++            webhook_secret=webhook_secret,
++        )
++
++    def get_batch_scan_status(self, job_id: str) -> dict[str, Any]:
++        return self._api_client.get_batch_scan_status(job_id)
++
++    def get_batch_scan_results(self, job_id: str) -> dict[str, Any]:
++        return self._api_client.get_batch_scan_results(job_id)
++
++    def list_projects(
++        self,
++        *,
++        status: str | None = None,
++        limit: int | None = None,
++        offset: int | None = None,
++        format: str | None = None,
++    ) -> dict[str, Any]:
++        return self._api_client.list_projects(status=status, limit=limit, offset=offset, format=format)
++
++    def create_project(self, name: str, description: str | None = None) -> dict[str, Any]:
++        return self._api_client.create_project(name=name, description=description)
++
++    def update_project(
++        self,
++        project_id: str,
++        *,
++        name: str | None = None,
++        description: str | None = None,
++        status: str | None = None,
++    ) -> dict[str, Any]:
++        return self._api_client.update_project(project_id, name=name, description=description, status=status)
++
++    def delete_project(self, project_id: str) -> dict[str, Any]:
++        return self._api_client.delete_project(project_id)
++
++    def get_summary(
++        self,
++        *,
++        period: str | None = None,
++        start_date: str | None = None,
++        end_date: str | None = None,
++        project_id: str | None = None,
++        group_by: str | None = None,
++    ) -> dict[str, Any]:
++        kwargs = {
++            "period": period,
++            "start_date": start_date,
++            "end_date": end_date,
++            "project_id": project_id,
++            "group_by": group_by,
++        }
++        return self._api_client.get_summary(**{key: value for key, value in kwargs.items() if value is not None})
++
++    def create_webhook(self, url: str, events: list[str], secret: str | None = None) -> dict[str, Any]:
++        return self._api_client.create_webhook(url=url, events=events, secret=secret)
++
++    def list_webhooks(self) -> dict[str, Any]:
++        return self._api_client.list_webhooks()
++
++    def delete_webhook(self, webhook_id: str) -> dict[str, Any]:
++        return self._api_client.delete_webhook(webhook_id)
++
++    def create_rule(
++        self,
++        *,
++        rule_type: str,
++        condition: dict[str, Any],
++        action: dict[str, Any],
++        priority: int | None = None,
++    ) -> dict[str, Any]:
++        return self._api_client.create_rule(rule_type=rule_type, condition=condition, action=action, priority=priority)
++
++    def list_rules(self, *, limit: int | None = None, offset: int | None = None) -> dict[str, Any]:
++        return self._api_client.list_rules(limit=limit, offset=offset)
++
++    def delete_rule(self, rule_id: str) -> dict[str, Any]:
++        return self._api_client.delete_rule(rule_id)
++
++    def get_usage(self, *, period: str | None = None, breakdown: str | None = None) -> dict[str, Any]:
++        return self._api_client.get_usage(period=period, breakdown=breakdown)
++
++    def export_transactions(self, *, format: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
++        return self._api_client.export_transactions(format=format, filters=filters)
++
+     def process_receipts_batch(
+         self,
+         input_dir: str,
+@@ -126,4 +331,3 @@ class ReciteTools:
+             return str(target)
+         path.rename(target)
+         return str(target)
+-
+diff --git a/tests/test_api_client.py b/tests/test_api_client.py
+index a6d4396..f712506 100644
+--- a/tests/test_api_client.py
++++ b/tests/test_api_client.py
+@@ -9,27 +9,52 @@ from recite_mcp.config import Settings
+ 
+ 
+ class _Response:
+-    def __init__(self, status_code: int, payload: dict) -> None:
++    def __init__(
++        self,
++        status_code: int,
++        payload: dict | None = None,
++        *,
++        text: str = "",
++        headers: dict[str, str] | None = None,
++    ) -> None:
+         self.status_code = status_code
+         self._payload = payload
++        self.text = text
++        self.headers = headers or {"Content-Type": "application/json"}
+ 
+     def json(self) -> dict:
++        if self._payload is None:
++            raise ValueError("No JSON payload configured.")
+         return self._payload
+ 
+ 
+ class _Session:
+     def __init__(self, response: _Response | Exception) -> None:
+         self._response = response
++        self.last_method: str | None = None
+         self.last_url: str | None = None
+         self.last_kwargs: dict | None = None
+ 
+-    def post(self, *_args, **_kwargs):  # noqa: ANN002, ANN003
+-        self.last_url = _args[0] if _args else None
+-        self.last_kwargs = _kwargs
++    def request(self, method: str, url: str, **kwargs):  # noqa: ANN001
++        self.last_method = method
++        self.last_url = url
++        self.last_kwargs = kwargs
+         if isinstance(self._response, Exception):
+             raise self._response
+         return self._response
+ 
++    def post(self, *args, **kwargs):  # noqa: ANN002, ANN003
++        return self.request("POST", args[0], **kwargs)
++
++    def get(self, *args, **kwargs):  # noqa: ANN002, ANN003
++        return self.request("GET", args[0], **kwargs)
++
++    def patch(self, *args, **kwargs):  # noqa: ANN002, ANN003
++        return self.request("PATCH", args[0], **kwargs)
++
++    def delete(self, *args, **kwargs):  # noqa: ANN002, ANN003
++        return self.request("DELETE", args[0], **kwargs)
++
+ 
+ def _settings(tmp_path: Path) -> Settings:
+     return Settings(
+@@ -62,6 +87,32 @@ def test_process_receipt_success(tmp_path: Path) -> None:
+     assert session.last_kwargs["json"]["auto_save"] is False
+ 
+ 
++def test_process_receipt_reads_extracted_data_shape(tmp_path: Path) -> None:
++    image = tmp_path / "receipt.jpg"
++    image.write_bytes(b"fake")
++    payload = {
++        "success": True,
++        "data": {
++            "scan_id": "scan_123",
++            "extracted_data": {
++                "vendor": "Nested Store",
++                "date": "2026-03-01",
++                "amount": 18.25,
++                "tax": 1.25,
++                "currency": "USD",
++                "category": "Food & Dining",
++            },
++        },
++    }
++    client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, payload)))
++
++    receipt = client.process_receipt(image)
++
++    assert receipt.vendor == "Nested Store"
++    assert receipt.total == 18.25
++    assert receipt.category == "Food & Dining"
++
++
+ def test_process_receipt_raises_on_http_error(tmp_path: Path) -> None:
+     image = tmp_path / "receipt.jpg"
+     image.write_bytes(b"fake")
+@@ -79,3 +130,121 @@ def test_process_receipt_raises_when_success_is_false(tmp_path: Path) -> None:
+ 
+     with pytest.raises(ApiClientError):
+         client.process_receipt(image)
++
++
++def test_scan_receipt_supports_local_file_and_ephemeral_mode(tmp_path: Path) -> None:
++    image = tmp_path / "receipt.png"
++    image.write_bytes(b"fake")
++    payload = {
++        "success": True,
++        "data": {
++            "scan_id": "scan_ephemeral",
++            "summary": {"confidence_band": "high", "auto_save_eligible": True},
++        },
++        "meta": {"request_id": "req_123"},
++    }
++    session = _Session(_Response(200, payload))
++    client = ApiClient(_settings(tmp_path), session=session)
++
++    result = client.scan_receipt(file_path=image, ephemeral=True)
++
++    assert result["data"]["scan_id"] == "scan_ephemeral"
++    assert session.last_method == "POST"
++    assert session.last_url is not None
++    assert session.last_url.endswith("/apiV1/api/v1/scan")
++    assert session.last_kwargs is not None
++    assert session.last_kwargs["json"]["ephemeral"] is True
++    assert "image_base64" in session.last_kwargs["json"]
++
++
++def test_scan_receipt_rejects_ephemeral_auto_save_combo(tmp_path: Path) -> None:
++    client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, {"success": True, "data": {}})))
++
++    with pytest.raises(ApiClientError, match="ephemeral"):
++        client.scan_receipt(raw_text="receipt text", ephemeral=True, auto_save=True, project_id="proj_123")
++
++
++def test_list_transactions_passes_filter_params(tmp_path: Path) -> None:
++    session = _Session(
++        _Response(
++            200,
++            {
++                "success": True,
++                "data": {
++                    "transactions": [],
++                    "pagination": {"total": 0, "limit": 10, "offset": 5, "has_more": False},
++                },
++            },
++        )
++    )
++    client = ApiClient(_settings(tmp_path), session=session)
++
++    result = client.list_transactions(start_date="2026-01-01", amount_min=10, offset=5, limit=10)
++
++    assert result["data"]["pagination"]["offset"] == 5
++    assert session.last_method == "GET"
++    assert session.last_kwargs is not None
++    assert session.last_kwargs["params"] == {
++        "start_date": "2026-01-01",
++        "amount_min": 10,
++        "offset": 5,
++        "limit": 10,
++    }
++
++
++def test_import_transactions_csv_sets_text_csv_request(tmp_path: Path) -> None:
++    session = _Session(_Response(200, {"success": True, "data": {"total": 1, "imported": 1, "failed": 0}}))
++    client = ApiClient(_settings(tmp_path), session=session)
++
++    result = client.import_transactions(
++        csv_text="date,amount,transaction_type,category,payment_method\n2026-03-01,12.50,Expense,Food,Card",
++        all_or_nothing=True,
++        project_id="proj_123",
++    )
++
++    assert result["data"]["imported"] == 1
++    assert session.last_method == "POST"
++    assert session.last_url is not None
++    assert session.last_url.endswith("/apiV1/api/v1/import/transactions")
++    assert session.last_kwargs is not None
++    assert session.last_kwargs["headers"]["Content-Type"] == "text/csv"
++    assert session.last_kwargs["data"].startswith("date,amount")
++    assert session.last_kwargs["params"] == {"all_or_nothing": "true", "project_id": "proj_123"}
++
++
++def test_import_transactions_requires_exactly_one_source(tmp_path: Path) -> None:
++    client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, {"success": True, "data": {}})))
++
++    with pytest.raises(ApiClientError, match="exactly one"):
++        client.import_transactions(transactions=[{"date": "2026-03-01"}], csv_text="date,amount")
++
++
++def test_delete_transaction_handles_no_content_response(tmp_path: Path) -> None:
++    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
++    client = ApiClient(_settings(tmp_path), session=session)
++
++    result = client.delete_transaction("txn_123")
++
++    assert result == {"status": "deleted", "transaction_id": "txn_123"}
++    assert session.last_method == "DELETE"
++    assert session.last_url is not None
++    assert session.last_url.endswith("/apiV1/api/v1/transactions/txn_123")
++
++
++def test_export_transactions_returns_csv_body_when_api_responds_with_csv(tmp_path: Path) -> None:
++    session = _Session(
++        _Response(
++            200,
++            None,
++            text="transaction_id,amount\n1,42.50\n",
++            headers={"Content-Type": "text/csv"},
++        )
++    )
++    client = ApiClient(_settings(tmp_path), session=session)
++
++    result = client.export_transactions(format="csv", filters={"project_id": "proj_123"})
++
++    assert result == {
++        "content_type": "text/csv",
++        "body": "transaction_id,amount\n1,42.50\n",
++    }
+diff --git a/tests/test_server.py b/tests/test_server.py
+index f99bcb7..354274b 100644
+--- a/tests/test_server.py
++++ b/tests/test_server.py
+@@ -20,6 +20,29 @@ def test_create_server_registers_tools_and_resources(tmp_path, monkeypatch) -> N
+ 
+     assert "process_receipt" in tool_names
+     assert "process_receipts_batch" in tool_names
++    assert "scan_receipt" in tool_names
++    assert "get_scan" in tool_names
++    assert "create_transaction" in tool_names
++    assert "list_transactions" in tool_names
++    assert "update_transaction" in tool_names
++    assert "delete_transaction" in tool_names
++    assert "import_transactions" in tool_names
++    assert "submit_batch_scans" in tool_names
++    assert "get_batch_scan_status" in tool_names
++    assert "get_batch_scan_results" in tool_names
++    assert "list_projects" in tool_names
++    assert "create_project" in tool_names
++    assert "update_project" in tool_names
++    assert "delete_project" in tool_names
++    assert "get_summary" in tool_names
++    assert "create_webhook" in tool_names
++    assert "list_webhooks" in tool_names
++    assert "delete_webhook" in tool_names
++    assert "create_rule" in tool_names
++    assert "list_rules" in tool_names
++    assert "delete_rule" in tool_names
++    assert "get_usage" in tool_names
++    assert "export_transactions" in tool_names
+     assert "recite://ledger" in resource_uris
+     assert "recite://health" in resource_uris
+ 
+diff --git a/tests/test_tools.py b/tests/test_tools.py
+index 0d408a1..94270d5 100644
+--- a/tests/test_tools.py
++++ b/tests/test_tools.py
+@@ -11,6 +11,12 @@ class _Client:
+     def process_receipt(self, _path: Path) -> ReceiptRecord:
+         return ReceiptRecord(vendor="Bakery", date="2026-02-22", total=8.0, tax=0.8, currency="USD", category="Meals")
+ 
++    def scan_receipt(self, **kwargs) -> dict:  # noqa: ANN003
++        return {"data": kwargs}
++
++    def get_summary(self, **kwargs) -> dict:  # noqa: ANN003
++        return {"data": kwargs}
++
+ 
+ def _settings(tmp_path: Path) -> Settings:
+     return Settings(recite_home=tmp_path, api_key="x", api_base_url="https://example", request_timeout_sec=20)
+@@ -39,3 +45,21 @@ def test_batch_dry_run_returns_preview(tmp_path: Path) -> None:
+     assert batch.processed == 0
+     assert batch.preview_count == 2
+ 
++
++def test_scan_receipt_tool_forwards_ephemeral_request(tmp_path: Path) -> None:
++    image = tmp_path / "receipt.jpg"
++    image.write_bytes(b"fake")
++    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
++
++    result = tools.scan_receipt(file_path=str(image), ephemeral=True)
++
++    assert result["data"]["ephemeral"] is True
++    assert result["data"]["file_path"] == str(image)
++
++
++def test_get_summary_tool_passes_grouping_options(tmp_path: Path) -> None:
++    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
++
++    result = tools.get_summary(period="last_30_days", group_by="category")
++
++    assert result["data"] == {"period": "last_30_days", "group_by": "category"}

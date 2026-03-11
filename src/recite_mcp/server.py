@@ -67,6 +67,24 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         metadata: dict | None = None,
         ephemeral: bool = False,
     ) -> dict:
+        """Scan a receipt using the Recite API to extract financial data.
+
+        Provide exactly one input: file_path, image_url, image_base64, or raw_text.
+        
+        Args:
+            file_path: Local path to an image.
+            image_url: Publicly accessible URL (must use https).
+            image_base64: Base64-encoded image data.
+            raw_text: Pre-extracted text.
+            auto_save: Auto-create a transaction if successful. Requires project_id.
+            save_threshold: Confidence threshold for auto-saving.
+            project_id: Project UUID. Required if auto_save is True.
+            status: Target status of the transaction.
+            image_type: MIME type hint for the image.
+            idempotency_key: Key to prevent duplicate processing.
+            metadata: Custom key-value data.
+            ephemeral: Process without saving scan records server-side. Cannot be True if auto_save is True.
+        """
         return tools.scan_receipt(
             file_path=file_path,
             image_url=image_url,
@@ -150,6 +168,17 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         all_or_nothing: bool | None = None,
         project_id: str | None = None,
     ) -> dict:
+        """Import multiple transactions at once.
+
+        Provide exactly one data source: transactions (list), csv_text, or csv_file_path.
+        
+        Args:
+            transactions: List of transaction objects to import.
+            csv_text: Raw CSV string content.
+            csv_file_path: Local path to a CSV file.
+            all_or_nothing: If True, fails the entire import if any transaction fails.
+            project_id: Apply all transactions to this project UUID.
+        """
         return tools.import_transactions(
             transactions=transactions,
             csv_text=csv_text,
@@ -167,6 +196,17 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         webhook_url: str | None = None,
         webhook_secret: str | None = None,
     ) -> dict:
+        """Submit multiple receipts for asynchronous batch processing.
+        
+        Args:
+            items: List of 1-20 task items. Each must provide exactly one of 
+                   file_path, image_url, or image_base64.
+            auto_save: Auto-create transactions for successful scans.
+            save_threshold: Confidence threshold for auto-saving.
+            project_id: Apply all auto-saved transactions to this project UUID.
+            webhook_url: URL to call when batch completes.
+            webhook_secret: HMAC-SHA256 signature secret for the webhook.
+        """
         return tools.submit_batch_scans(
             items=items,
             auto_save=auto_save,

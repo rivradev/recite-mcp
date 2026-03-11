@@ -17,9 +17,10 @@ class _Response:
         text: str = "",
         headers: dict[str, str] | None = None,
     ) -> None:
+        import json
         self.status_code = status_code
         self._payload = payload
-        self.text = text
+        self.text = text or (json.dumps(payload) if payload is not None else "")
         self.headers = headers or {"Content-Type": "application/json"}
 
     def json(self) -> dict:
@@ -148,7 +149,7 @@ def test_scan_receipt_supports_local_file_and_ephemeral_mode(tmp_path: Path) -> 
 
     result = client.scan_receipt(file_path=image, ephemeral=True)
 
-    assert result["data"]["scan_id"] == "scan_ephemeral"
+    assert result["scan_id"] == "scan_ephemeral"
     assert session.last_method == "POST"
     assert session.last_url is not None
     assert session.last_url.endswith("/apiV1/api/v1/scan")
@@ -181,7 +182,7 @@ def test_list_transactions_passes_filter_params(tmp_path: Path) -> None:
 
     result = client.list_transactions(start_date="2026-01-01", amount_min=10, offset=5, limit=10)
 
-    assert result["data"]["pagination"]["offset"] == 5
+    assert result["pagination"]["offset"] == 5
     assert session.last_method == "GET"
     assert session.last_kwargs is not None
     assert session.last_kwargs["params"] == {
@@ -202,7 +203,7 @@ def test_import_transactions_csv_sets_text_csv_request(tmp_path: Path) -> None:
         project_id="proj_123",
     )
 
-    assert result["data"]["imported"] == 1
+    assert result["imported"] == 1
     assert session.last_method == "POST"
     assert session.last_url is not None
     assert session.last_url.endswith("/apiV1/api/v1/import/transactions")
