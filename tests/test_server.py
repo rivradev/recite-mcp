@@ -20,6 +20,29 @@ def test_create_server_registers_tools_and_resources(tmp_path, monkeypatch) -> N
 
     assert "process_receipt" in tool_names
     assert "process_receipts_batch" in tool_names
+    assert "scan_receipt" in tool_names
+    assert "get_scan" in tool_names
+    assert "create_transaction" in tool_names
+    assert "list_transactions" in tool_names
+    assert "update_transaction" in tool_names
+    assert "delete_transaction" in tool_names
+    assert "import_transactions" in tool_names
+    assert "submit_batch_scans" in tool_names
+    assert "get_batch_scan_status" in tool_names
+    assert "get_batch_scan_results" in tool_names
+    assert "list_projects" in tool_names
+    assert "create_project" in tool_names
+    assert "update_project" in tool_names
+    assert "delete_project" in tool_names
+    assert "get_summary" in tool_names
+    assert "create_webhook" in tool_names
+    assert "list_webhooks" in tool_names
+    assert "delete_webhook" in tool_names
+    assert "create_rule" in tool_names
+    assert "list_rules" in tool_names
+    assert "delete_rule" in tool_names
+    assert "get_usage" in tool_names
+    assert "export_transactions" in tool_names
     assert "recite://ledger" in resource_uris
     assert "recite://health" in resource_uris
 
