@@ -97,20 +97,37 @@ rm -f "$RECITE_HOME/long_term_memory.md"
 
 Search for and delete leftover test artifacts before starting a new run.
 
+**Delete stale transactions:**
 ```
-Call list_transactions with vendor="E2E Test Vendor"  → delete each transaction_id returned
-Call list_transactions with vendor="Import Test A"    → delete all
-Call list_transactions with vendor="Import Test B"    → delete all
-Call list_transactions with vendor="CSV Vendor"       → delete all
+Call list_transactions with vendor="E2E Test Vendor", limit=50
+→ For each transaction_id returned: Call delete_transaction with transaction_id="<id>"
 
+Call list_transactions with vendor="Import Test A", limit=50
+→ For each transaction_id returned: Call delete_transaction with transaction_id="<id>"
+
+Call list_transactions with vendor="Import Test B", limit=50
+→ For each transaction_id returned: Call delete_transaction with transaction_id="<id>"
+
+Call list_transactions with vendor="CSV Vendor", limit=50
+→ For each transaction_id returned: Call delete_transaction with transaction_id="<id>"
+```
+
+**Delete stale projects:**
+```
 Call list_projects
-→ delete any project with name="E2E Test Project" or status=archived and name contains "E2E"
+→ For each project where name="E2E Test Project": Call delete_project with project_id="<id>"
+```
 
+**Delete stale webhooks:**
+```
 Call list_webhooks
-→ delete any webhook pointing at webhook.site
+→ For each webhook where url contains "webhook.site": Call delete_webhook with webhook_id="<id>"
+```
 
+**Delete stale rules:**
+```
 Call list_rules
-→ delete any rule with condition={"vendor":"Coffee"}
+→ For each rule where condition={"vendor":"Coffee"}: Call delete_rule with rule_id="<id>"
 ```
 
 **Pass:** All the above queries return empty lists (or lists containing only non-test data).
