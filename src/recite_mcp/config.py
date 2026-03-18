@@ -31,7 +31,9 @@ class Settings:
 
 
 def _default_home() -> Path:
-    return Path(os.environ.get("RECITE_HOME", Path.home() / ".config" / "recite")).expanduser()
+    return Path(
+        os.environ.get("RECITE_HOME", Path.home() / ".config" / "recite")
+    ).expanduser()
 
 
 def _load_config_file(home: Path) -> dict:
@@ -50,9 +52,13 @@ def load_settings(require_api_key: bool = True) -> Settings:
     api_key = env_key or config.get("api_key")
 
     if require_api_key and not api_key:
-        raise ConfigError("Missing API key. Set RECITE_API_KEY or RECITE_HOME/config.toml api_key.")
+        raise ConfigError(
+            "Missing API key. Set RECITE_API_KEY or RECITE_HOME/config.toml api_key."
+        )
 
-    api_base_url = str(config.get("api_base_url", "https://recite.rivra.dev/apiV1/api/v1")).rstrip("/")
+    api_base_url = str(
+        config.get("api_base_url", "https://recite.rivra.dev/apiV1/api/v1")
+    ).rstrip("/")
     request_timeout_sec = int(config.get("request_timeout_sec", 30))
 
     return Settings(

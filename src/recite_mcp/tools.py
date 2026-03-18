@@ -27,7 +27,9 @@ class ReciteTools:
         self._memory = memory
 
     @classmethod
-    def from_settings(cls, settings: Settings, api_client: ApiClient | object | None = None) -> "ReciteTools":
+    def from_settings(
+        cls, settings: Settings, api_client: ApiClient | object | None = None
+    ) -> "ReciteTools":
         resolved_client = api_client if api_client is not None else ApiClient(settings)
         return cls(
             settings=settings,
@@ -55,7 +57,13 @@ class ReciteTools:
         renamed_to = None
         if rename:
             renamed_to = self._rename_file(path, entry.vendor, entry.date, entry.total)
-        return ProcessResult(status="ok", message="processed", ledger_entry=entry, receipt=receipt, renamed_to=renamed_to)
+        return ProcessResult(
+            status="ok",
+            message="processed",
+            ledger_entry=entry,
+            receipt=receipt,
+            renamed_to=renamed_to,
+        )
 
     def scan_receipt(
         self,
@@ -138,7 +146,9 @@ class ReciteTools:
     def get_transaction(self, transaction_id: str) -> dict[str, Any]:
         return self._api_client.get_transaction(transaction_id)
 
-    def update_transaction(self, transaction_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+    def update_transaction(
+        self, transaction_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
         return self._api_client.update_transaction(transaction_id, changes)
 
     def delete_transaction(self, transaction_id: str) -> dict[str, Any]:
@@ -194,9 +204,13 @@ class ReciteTools:
         offset: int | None = None,
         format: str | None = None,
     ) -> dict[str, Any]:
-        return self._api_client.list_projects(status=status, limit=limit, offset=offset, format=format)
+        return self._api_client.list_projects(
+            status=status, limit=limit, offset=offset, format=format
+        )
 
-    def create_project(self, name: str, description: str | None = None) -> dict[str, Any]:
+    def create_project(
+        self, name: str, description: str | None = None
+    ) -> dict[str, Any]:
         return self._api_client.create_project(name=name, description=description)
 
     def update_project(
@@ -207,7 +221,9 @@ class ReciteTools:
         description: str | None = None,
         status: str | None = None,
     ) -> dict[str, Any]:
-        return self._api_client.update_project(project_id, name=name, description=description, status=status)
+        return self._api_client.update_project(
+            project_id, name=name, description=description, status=status
+        )
 
     def delete_project(self, project_id: str) -> dict[str, Any]:
         return self._api_client.delete_project(project_id)
@@ -228,9 +244,13 @@ class ReciteTools:
             "project_id": project_id,
             "group_by": group_by,
         }
-        return self._api_client.get_summary(**{key: value for key, value in kwargs.items() if value is not None})
+        return self._api_client.get_summary(
+            **{key: value for key, value in kwargs.items() if value is not None}
+        )
 
-    def create_webhook(self, url: str, events: list[str], secret: str | None = None) -> dict[str, Any]:
+    def create_webhook(
+        self, url: str, events: list[str], secret: str | None = None
+    ) -> dict[str, Any]:
         return self._api_client.create_webhook(url=url, events=events, secret=secret)
 
     def list_webhooks(self) -> dict[str, Any]:
@@ -247,18 +267,26 @@ class ReciteTools:
         action: dict[str, Any],
         priority: int | None = None,
     ) -> dict[str, Any]:
-        return self._api_client.create_rule(rule_type=rule_type, condition=condition, action=action, priority=priority)
+        return self._api_client.create_rule(
+            rule_type=rule_type, condition=condition, action=action, priority=priority
+        )
 
-    def list_rules(self, *, limit: int | None = None, offset: int | None = None) -> dict[str, Any]:
+    def list_rules(
+        self, *, limit: int | None = None, offset: int | None = None
+    ) -> dict[str, Any]:
         return self._api_client.list_rules(limit=limit, offset=offset)
 
     def delete_rule(self, rule_id: str) -> dict[str, Any]:
         return self._api_client.delete_rule(rule_id)
 
-    def get_usage(self, *, period: str | None = None, breakdown: str | None = None) -> dict[str, Any]:
+    def get_usage(
+        self, *, period: str | None = None, breakdown: str | None = None
+    ) -> dict[str, Any]:
         return self._api_client.get_usage(period=period, breakdown=breakdown)
 
-    def export_transactions(self, *, format: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+    def export_transactions(
+        self, *, format: str, filters: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         return self._api_client.export_transactions(format=format, filters=filters)
 
     def process_receipts_batch(
@@ -270,7 +298,11 @@ class ReciteTools:
     ) -> BatchProcessResult:
         base = Path(input_dir).expanduser()
         iterator = base.rglob("*") if recursive else base.glob("*")
-        files = [p for p in iterator if p.is_file() and p.suffix.lower() in _DEFAULT_EXTENSIONS]
+        files = [
+            p
+            for p in iterator
+            if p.is_file() and p.suffix.lower() in _DEFAULT_EXTENSIONS
+        ]
 
         if dry_run:
             return BatchProcessResult(
@@ -291,7 +323,9 @@ class ReciteTools:
                     {
                         "file": str(path),
                         "status": "ok",
-                        "entry_id": result.ledger_entry.entry_id if result.ledger_entry else None,
+                        "entry_id": result.ledger_entry.entry_id
+                        if result.ledger_entry
+                        else None,
                     }
                 )
                 processed += 1
@@ -299,7 +333,13 @@ class ReciteTools:
                 failed += 1
                 items.append({"file": str(path), "status": "error", "error": str(exc)})
 
-        return BatchProcessResult(status="ok", processed=processed, failed=failed, preview_count=len(files), items=items)
+        return BatchProcessResult(
+            status="ok",
+            processed=processed,
+            failed=failed,
+            preview_count=0,
+            items=items,
+        )
 
     def update_memory(self, instruction: str, tags: list[str] | None = None) -> dict:
         return asdict(self._memory.add_instruction(instruction, tags=tags))
@@ -307,8 +347,14 @@ class ReciteTools:
     def list_memory(self) -> list[dict]:
         return [asdict(entry) for entry in self._memory.list_instructions()]
 
-    def add_ledger_correction(self, original_entry_id: str, corrected_fields: dict, reason: str) -> dict:
-        return asdict(self._ledger.add_correction(original_entry_id, corrected_fields=corrected_fields, reason=reason))
+    def add_ledger_correction(
+        self, original_entry_id: str, corrected_fields: dict, reason: str
+    ) -> dict:
+        return asdict(
+            self._ledger.add_correction(
+                original_entry_id, corrected_fields=corrected_fields, reason=reason
+            )
+        )
 
     def summarize_ledger(self, group_by: str = "vendor") -> dict:
         return self._ledger.summarize(group_by=group_by)
@@ -325,9 +371,21 @@ class ReciteTools:
 
     @staticmethod
     def _rename_file(path: Path, vendor: str, date: str, total: float) -> str:
-        safe_vendor = "".join(ch for ch in vendor if ch.isalnum() or ch in ("-", "_")).strip() or "vendor"
-        target = path.with_name(f"{date}_{safe_vendor}_{total:.2f}{path.suffix.lower()}")
+        # Treat Python None-as-string and other null-like values as absent.
+        vendor_normalized = "" if vendor in ("None", "null", "N/A", "") else vendor
+        safe_vendor = (
+            "".join(
+                ch for ch in vendor_normalized if ch.isalnum() or ch in ("-", "_")
+            ).strip()
+            or "Unknown"
+        )
+        target = path.with_name(
+            f"{date}_{safe_vendor}_{total:.2f}{path.suffix.lower()}"
+        )
         if target == path:
             return str(target)
-        path.rename(target)
+        # Use replace() instead of rename() so the operation succeeds on
+        # Windows even when the target file already exists (rename() raises
+        # FileExistsError on Windows when the destination is present).
+        path.replace(target)
         return str(target)

@@ -12,11 +12,19 @@ from recite_mcp.tools import ReciteTools
 # Stub API client — returns kwargs so tests can inspect forwarded args
 # ---------------------------------------------------------------------------
 
+
 class _Client:
     """Minimal stub that records and echoes calls."""
 
     def process_receipt(self, _path: Path) -> ReceiptRecord:
-        return ReceiptRecord(vendor="Bakery", date="2026-02-22", total=8.0, tax=0.8, currency="USD", category="Meals")
+        return ReceiptRecord(
+            vendor="Bakery",
+            date="2026-02-22",
+            total=8.0,
+            tax=0.8,
+            currency="USD",
+            category="Meals",
+        )
 
     def scan_receipt(self, **kwargs: Any) -> dict:
         return {"data": kwargs}
@@ -66,7 +74,9 @@ class _Client:
     def get_summary(self, **kwargs: Any) -> dict:
         return {"data": kwargs}
 
-    def create_webhook(self, *, url: str, events: list[str], secret: str | None = None) -> dict:
+    def create_webhook(
+        self, *, url: str, events: list[str], secret: str | None = None
+    ) -> dict:
         return {"webhook_id": "wh_new", "url": url, "events": events}
 
     def list_webhooks(self) -> dict:
@@ -75,7 +85,14 @@ class _Client:
     def delete_webhook(self, webhook_id: str) -> dict:
         return {"status": "deleted", "webhook_id": webhook_id}
 
-    def create_rule(self, *, rule_type: str, condition: dict, action: dict, priority: int | None = None) -> dict:
+    def create_rule(
+        self,
+        *,
+        rule_type: str,
+        condition: dict,
+        action: dict,
+        priority: int | None = None,
+    ) -> dict:
         return {"rule_id": "rule_new", "rule_type": rule_type}
 
     def list_rules(self, **kwargs: Any) -> dict:
@@ -92,7 +109,12 @@ class _Client:
 
 
 def _settings(tmp_path: Path) -> Settings:
-    return Settings(recite_home=tmp_path, api_key="x", api_base_url="https://example", request_timeout_sec=20)
+    return Settings(
+        recite_home=tmp_path,
+        api_key="x",
+        api_base_url="https://example",
+        request_timeout_sec=20,
+    )
 
 
 def _tools(tmp_path: Path) -> ReciteTools:
@@ -102,6 +124,7 @@ def _tools(tmp_path: Path) -> ReciteTools:
 # ---------------------------------------------------------------------------
 # Legacy process_receipt / batch
 # ---------------------------------------------------------------------------
+
 
 def test_process_receipt_tool_writes_ledger(tmp_path: Path) -> None:
     image = tmp_path / "receipt.jpg"
@@ -127,9 +150,105 @@ def test_batch_dry_run_returns_preview(tmp_path: Path) -> None:
     assert batch.preview_count == 2
 
 
+def test_batch_live_run_has_zero_preview_count(tmp_path: Path) -> None:
+    (tmp_path / "a.jpg").write_bytes(b"a")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+
+    batch = tools.process_receipts_batch(input_dir=str(tmp_path), dry_run=False)
+
+    assert batch.processed == 1
+    assert batch.preview_count == 0
+
+
+def test_rename_file_unknown_vendor_when_none_string(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+
+    result = ReciteTools._rename_file(image, "None", "2026-01-01", 12.50)
+
+    assert "Unknown" in Path(result).name
+    assert "None" not in Path(result).name
+
+
+def test_rename_file_unknown_vendor_when_empty(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+
+    result = ReciteTools._rename_file(image, "", "2026-01-01", 5.00)
+
+    assert "Unknown" in Path(result).name
+
+
+def test_rename_file_target_already_exists(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    # Pre-create the target file that would otherwise cause FileExistsError
+    target = tmp_path / "2026-01-01_Bakery_8.00.jpg"
+    target.write_bytes(b"old content")
+
+    result = ReciteTools._rename_file(image, "Bakery", "2026-01-01", 8.00)
+
+    assert Path(result) == target
+    assert target.exists()
+
+
+def test_process_receipt_dry_run_does_not_write_ledger(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+
+    result = tools.process_receipt(file_path=str(image), dry_run=True)
+
+    assert result.status == "ok"
+    assert result.message == "dry_run"
+    assert result.ledger_entry is None
+    # Ledger file should not exist (no write occurred)
+    from recite_mcp.config import Settings
+    s = _settings(tmp_path)
+    assert not s.ledger_path.exists()
+
+
+def test_export_ledger_csv(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+    tools.process_receipt(file_path=str(image), dry_run=False)
+
+    out = tmp_path / "out.csv"
+    result = tools.export_ledger("csv", str(out))
+
+    assert result["status"] == "ok"
+    assert out.exists()
+    assert "Bakery" in out.read_text(encoding="utf-8")
+
+
+def test_export_ledger_json(tmp_path: Path) -> None:
+    import json as json_mod
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+    tools.process_receipt(file_path=str(image), dry_run=False)
+
+    out = tmp_path / "out.json"
+    result = tools.export_ledger("json", str(out))
+
+    assert result["status"] == "ok"
+    payload = json_mod.loads(out.read_text(encoding="utf-8"))
+    assert isinstance(payload, list)
+    assert payload[0]["vendor"] == "Bakery"
+
+
+def test_export_ledger_unsupported_format_raises(tmp_path: Path) -> None:
+    tools = _tools(tmp_path)
+    import pytest
+    with pytest.raises(ValueError, match="Unsupported format"):
+        tools.export_ledger("xml", str(tmp_path / "out.xml"))
+
+
 # ---------------------------------------------------------------------------
 # scan_receipt
 # ---------------------------------------------------------------------------
+
 
 def test_scan_receipt_tool_forwards_ephemeral_request(tmp_path: Path) -> None:
     image = tmp_path / "receipt.jpg"
@@ -157,7 +276,9 @@ def test_scan_receipt_tool_forwards_auto_save_params(tmp_path: Path) -> None:
 def test_scan_receipt_tool_forwards_metadata(tmp_path: Path) -> None:
     tools = _tools(tmp_path)
 
-    result = tools.scan_receipt(image_url="https://example.com/r.jpg", metadata={"source": "email"})
+    result = tools.scan_receipt(
+        image_url="https://example.com/r.jpg", metadata={"source": "email"}
+    )
 
     assert result["data"]["metadata"] == {"source": "email"}
 
@@ -165,6 +286,7 @@ def test_scan_receipt_tool_forwards_metadata(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # get_scan
 # ---------------------------------------------------------------------------
+
 
 def test_get_scan_tool_returns_scan(tmp_path: Path) -> None:
     result = _tools(tmp_path).get_scan("scan_abc")
@@ -175,8 +297,15 @@ def test_get_scan_tool_returns_scan(tmp_path: Path) -> None:
 # transactions
 # ---------------------------------------------------------------------------
 
+
 def test_create_transaction_tool_forwards_payload(tmp_path: Path) -> None:
-    txn = {"date": "2026-03-01", "amount": 50.0, "transaction_type": "Expense", "category": "Food", "payment_method": "Card"}
+    txn = {
+        "date": "2026-03-01",
+        "amount": 50.0,
+        "transaction_type": "Expense",
+        "category": "Food",
+        "payment_method": "Card",
+    }
     result = _tools(tmp_path).create_transaction(txn)
     assert result["transaction_id"] == "txn_new"
     assert result["amount"] == 50.0
@@ -208,15 +337,20 @@ def test_delete_transaction_tool_returns_deleted(tmp_path: Path) -> None:
 # import_transactions
 # ---------------------------------------------------------------------------
 
+
 def test_import_transactions_tool_forwards_json_payload(tmp_path: Path) -> None:
     txns = [{"date": "2026-03-01", "amount": 10.0}]
-    result = _tools(tmp_path).import_transactions(transactions=txns, project_id="proj_x")
+    result = _tools(tmp_path).import_transactions(
+        transactions=txns, project_id="proj_x"
+    )
     assert result["data"]["transactions"] == txns
     assert result["data"]["project_id"] == "proj_x"
 
 
 def test_import_transactions_tool_forwards_csv_text(tmp_path: Path) -> None:
-    result = _tools(tmp_path).import_transactions(csv_text="date,amount\n2026-03-01,10.0")
+    result = _tools(tmp_path).import_transactions(
+        csv_text="date,amount\n2026-03-01,10.0"
+    )
     assert result["data"]["csv_text"].startswith("date,amount")
 
 
@@ -231,9 +365,12 @@ def test_import_transactions_tool_forwards_csv_file_path(tmp_path: Path) -> None
 # submit_batch_scans
 # ---------------------------------------------------------------------------
 
+
 def test_submit_batch_scans_tool_forwards_items(tmp_path: Path) -> None:
     items = [{"image_url": "https://example.com/r.jpg"}]
-    result = _tools(tmp_path).submit_batch_scans(items=items, auto_save=True, project_id="proj_x")
+    result = _tools(tmp_path).submit_batch_scans(
+        items=items, auto_save=True, project_id="proj_x"
+    )
     assert result["data"]["items"] == items
     assert result["data"]["auto_save"] is True
 
@@ -251,6 +388,7 @@ def test_submit_batch_scans_tool_forwards_webhook(tmp_path: Path) -> None:
 # batch status / results
 # ---------------------------------------------------------------------------
 
+
 def test_get_batch_scan_status_tool(tmp_path: Path) -> None:
     result = _tools(tmp_path).get_batch_scan_status("job_1")
     assert result["job_id"] == "job_1"
@@ -266,6 +404,7 @@ def test_get_batch_scan_results_tool(tmp_path: Path) -> None:
 # projects
 # ---------------------------------------------------------------------------
 
+
 def test_list_projects_tool_forwards_params(tmp_path: Path) -> None:
     result = _tools(tmp_path).list_projects(status="active", limit=10)
     assert result["data"]["status"] == "active"
@@ -279,7 +418,9 @@ def test_create_project_tool(tmp_path: Path) -> None:
 
 
 def test_update_project_tool(tmp_path: Path) -> None:
-    result = _tools(tmp_path).update_project("proj_1", name="Renamed", status="archived")
+    result = _tools(tmp_path).update_project(
+        "proj_1", name="Renamed", status="archived"
+    )
     assert result["project_id"] == "proj_1"
 
 
@@ -291,6 +432,7 @@ def test_delete_project_tool_returns_deleted(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # summary
 # ---------------------------------------------------------------------------
+
 
 def test_get_summary_tool_passes_grouping_options(tmp_path: Path) -> None:
     result = _tools(tmp_path).get_summary(period="last_30_days", group_by="category")
@@ -309,8 +451,11 @@ def test_get_summary_tool_omits_none_params(tmp_path: Path) -> None:
 # webhooks
 # ---------------------------------------------------------------------------
 
+
 def test_create_webhook_tool(tmp_path: Path) -> None:
-    result = _tools(tmp_path).create_webhook(url="https://my.app/wh", events=["batch.completed"])
+    result = _tools(tmp_path).create_webhook(
+        url="https://my.app/wh", events=["batch.completed"]
+    )
     assert result["webhook_id"] == "wh_new"
     assert result["events"] == ["batch.completed"]
 
@@ -328,6 +473,7 @@ def test_delete_webhook_tool(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # rules
 # ---------------------------------------------------------------------------
+
 
 def test_create_rule_tool(tmp_path: Path) -> None:
     result = _tools(tmp_path).create_rule(
@@ -354,6 +500,7 @@ def test_delete_rule_tool(tmp_path: Path) -> None:
 # usage / export
 # ---------------------------------------------------------------------------
 
+
 def test_get_usage_tool_forwards_params(tmp_path: Path) -> None:
     result = _tools(tmp_path).get_usage(period="today", breakdown="daily")
     assert result["data"]["period"] == "today"
@@ -361,6 +508,8 @@ def test_get_usage_tool_forwards_params(tmp_path: Path) -> None:
 
 
 def test_export_transactions_tool_forwards_format_and_filters(tmp_path: Path) -> None:
-    result = _tools(tmp_path).export_transactions(format="csv", filters={"project_id": "proj_x"})
+    result = _tools(tmp_path).export_transactions(
+        format="csv", filters={"project_id": "proj_x"}
+    )
     assert result["format"] == "csv"
     assert result["filters"] == {"project_id": "proj_x"}

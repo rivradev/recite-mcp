@@ -16,12 +16,31 @@ class MemoryRepository:
         if not self.path.exists():
             self.path.write_text("", encoding="utf-8")
 
-    def add_instruction(self, instruction: str, tags: list[str] | None = None) -> MemoryEntry:
+    def add_instruction(
+        self, instruction: str, tags: list[str] | None = None
+    ) -> MemoryEntry:
         self._ensure_file()
-        entry = MemoryEntry(timestamp_utc=utc_now_iso(), instruction=instruction, tags=tags or [])
+        normalized = instruction.strip().lower()
+        existing = self.list_instructions()
+
+        for entry in existing:
+            if entry.instruction.strip().lower() == normalized:
+                entry.timestamp_utc = utc_now_iso()
+                entry.tags = tags or entry.tags
+                self._rewrite_all(existing)
+                return entry
+
+        entry = MemoryEntry(
+            timestamp_utc=utc_now_iso(), instruction=instruction, tags=tags or []
+        )
         with self.path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(entry)) + "\n")
         return entry
+
+    def _rewrite_all(self, entries: list[MemoryEntry]) -> None:
+        with self.path.open("w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(asdict(entry)) + "\n")
 
     def list_instructions(self) -> list[MemoryEntry]:
         self._ensure_file()

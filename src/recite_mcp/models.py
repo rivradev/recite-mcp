@@ -32,6 +32,7 @@ class LedgerEntry:
     source_file: str
     ref_entry_id: str = ""
     correction_reason: str = ""
+    corrected_fields: str = ""
 
 
 @dataclass(slots=True)
@@ -57,4 +58,3 @@ class BatchProcessResult:
     failed: int
     preview_count: int
     items: list[dict]
-

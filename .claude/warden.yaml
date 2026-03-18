@@ -1,0 +1,3 @@
+rules:
+  - command: "python"
+    default: allow

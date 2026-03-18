@@ -7,7 +7,9 @@ import pytest
 from recite_mcp.config import ConfigError, Settings, load_settings
 
 
-def test_load_settings_prefers_env_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_settings_prefers_env_api_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     home = tmp_path / "recite"
     home.mkdir()
     (home / "config.toml").write_text('api_key = "from_file"\n', encoding="utf-8")
@@ -20,10 +22,15 @@ def test_load_settings_prefers_env_api_key(monkeypatch: pytest.MonkeyPatch, tmp_
     assert settings.recite_home == home
 
 
-def test_load_settings_uses_file_api_key_when_env_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_settings_uses_file_api_key_when_env_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     home = tmp_path / "recite"
     home.mkdir()
-    (home / "config.toml").write_text('api_key = "from_file"\napi_base_url = "https://example.test"\n', encoding="utf-8")
+    (home / "config.toml").write_text(
+        'api_key = "from_file"\napi_base_url = "https://example.test"\n',
+        encoding="utf-8",
+    )
     monkeypatch.setenv("RECITE_HOME", str(home))
     monkeypatch.delenv("RECITE_API_KEY", raising=False)
 
@@ -33,7 +40,9 @@ def test_load_settings_uses_file_api_key_when_env_missing(monkeypatch: pytest.Mo
     assert settings.api_base_url == "https://example.test"
 
 
-def test_load_settings_raises_without_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_settings_raises_without_api_key(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("RECITE_HOME", str(tmp_path / "recite"))
     monkeypatch.delenv("RECITE_API_KEY", raising=False)
 
@@ -41,7 +50,9 @@ def test_load_settings_raises_without_api_key(monkeypatch: pytest.MonkeyPatch, t
         load_settings(require_api_key=True)
 
 
-def test_load_settings_allows_missing_api_key_when_not_required(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_load_settings_allows_missing_api_key_when_not_required(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("RECITE_HOME", str(tmp_path / "recite"))
     monkeypatch.delenv("RECITE_API_KEY", raising=False)
 

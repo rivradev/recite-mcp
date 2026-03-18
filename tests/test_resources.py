@@ -7,7 +7,12 @@ from recite_mcp.resources import ResourceProvider
 
 
 def _settings(tmp_path: Path) -> Settings:
-    return Settings(recite_home=tmp_path, api_key="x", api_base_url="https://example", request_timeout_sec=20)
+    return Settings(
+        recite_home=tmp_path,
+        api_key="x",
+        api_base_url="https://example",
+        request_timeout_sec=20,
+    )
 
 
 def test_health_resource_reports_ok(tmp_path: Path) -> None:
@@ -20,7 +25,12 @@ def test_health_resource_reports_ok(tmp_path: Path) -> None:
 
 
 def test_health_resource_reports_missing_api_key(tmp_path: Path) -> None:
-    settings = Settings(recite_home=tmp_path, api_key=None, api_base_url="https://example", request_timeout_sec=20)
+    settings = Settings(
+        recite_home=tmp_path,
+        api_key=None,
+        api_base_url="https://example",
+        request_timeout_sec=20,
+    )
     provider = ResourceProvider(settings)
     health = provider.get_health()
 
