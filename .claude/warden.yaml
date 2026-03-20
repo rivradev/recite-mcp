@@ -1,5 +1,0 @@
-rules:
-  - command: "python"
-    default: allow
-  - command: "python3"
-    default: allow
