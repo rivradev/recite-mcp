@@ -105,7 +105,32 @@ class _Client:
         return {"data": kwargs}
 
     def export_transactions(self, *, format: str, filters: dict | None = None) -> dict:
-        return {"format": format, "filters": filters}
+        return {"content_type": "text/csv", "body": f"header\nrow1\nrow2", "format": format, "filters": filters}
+
+    def update_rule(self, rule_id: str, changes: dict) -> dict:
+        return {"rule_id": rule_id, **changes}
+
+    def get_categories(self) -> dict:
+        return {
+            "default_categories": ["Advertising & Marketing"],
+            "custom_categories": [],
+            "all_categories": ["Advertising & Marketing"],
+        }
+
+    def create_category(self, name: str) -> dict:
+        return {"name": name}
+
+    def delete_category(self, name: str) -> dict:
+        return {"status": "deleted", "name": name}
+
+    def get_vendors(self) -> dict:
+        return {"custom_vendors": []}
+
+    def create_vendor(self, name: str) -> dict:
+        return {"name": name}
+
+    def delete_vendor(self, name: str) -> dict:
+        return {"status": "deleted", "name": name}
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -157,39 +182,73 @@ def test_batch_live_run_has_zero_preview_count(tmp_path: Path) -> None:
     batch = tools.process_receipts_batch(input_dir=str(tmp_path), dry_run=False)
 
     assert batch.processed == 1
-    assert batch.preview_count == 0
+    assert batch.preview_count is None
 
 
 def test_rename_file_unknown_vendor_when_none_string(tmp_path: Path) -> None:
     image = tmp_path / "receipt.jpg"
     image.write_bytes(b"fake")
 
-    result = ReciteTools._rename_file(image, "None", "2026-01-01", 12.50)
+    result, warning = ReciteTools._rename_file(image, "None", "2026-01-01", 12.50)
 
     assert "Unknown" in Path(result).name
     assert "None" not in Path(result).name
+    assert warning is None
 
 
 def test_rename_file_unknown_vendor_when_empty(tmp_path: Path) -> None:
     image = tmp_path / "receipt.jpg"
     image.write_bytes(b"fake")
 
-    result = ReciteTools._rename_file(image, "", "2026-01-01", 5.00)
+    result, warning = ReciteTools._rename_file(image, "", "2026-01-01", 5.00)
 
     assert "Unknown" in Path(result).name
+    assert warning is None
 
 
-def test_rename_file_target_already_exists(tmp_path: Path) -> None:
+def test_rename_file_target_already_exists_raises(tmp_path: Path) -> None:
     image = tmp_path / "receipt.jpg"
     image.write_bytes(b"fake")
-    # Pre-create the target file that would otherwise cause FileExistsError
-    target = tmp_path / "2026-01-01_Bakery_8.00.jpg"
-    target.write_bytes(b"old content")
+    # Pre-create the target file to trigger the collision path
+    (tmp_path / "2026-01-01_Bakery_8.00.jpg").write_bytes(b"old content")
 
-    result = ReciteTools._rename_file(image, "Bakery", "2026-01-01", 8.00)
+    import pytest
+    with pytest.raises(FileExistsError, match="2026-01-01_Bakery_8.00.jpg"):
+        ReciteTools._rename_file(image, "Bakery", "2026-01-01", 8.00)
 
-    assert Path(result) == target
-    assert target.exists()
+
+def test_rename_file_no_collision_has_no_warning(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+
+    result, warning = ReciteTools._rename_file(image, "Bakery", "2026-01-01", 8.00)
+
+    assert Path(result).name == "2026-01-01_Bakery_8.00.jpg"
+    assert warning is None
+
+
+def test_process_receipt_rename_collision_returns_error(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    # Pre-create the collision target
+    (tmp_path / "2026-02-22_Bakery_8.00.jpg").write_bytes(b"old")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+
+    result = tools.process_receipt(file_path=str(image), rename=True, dry_run=False)
+
+    assert result.status == "error"
+    assert "2026-02-22_Bakery_8.00.jpg" in result.message
+    assert result.ledger_entry is None  # rename failed before ledger write
+
+
+def test_process_receipt_rename_no_collision_has_empty_warnings(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
+
+    result = tools.process_receipt(file_path=str(image), rename=True, dry_run=False)
+
+    assert result.warnings == []
 
 
 def test_process_receipt_dry_run_does_not_write_ledger(tmp_path: Path) -> None:
@@ -511,5 +570,73 @@ def test_export_transactions_tool_forwards_format_and_filters(tmp_path: Path) ->
     result = _tools(tmp_path).export_transactions(
         format="csv", filters={"project_id": "proj_x"}
     )
+    assert isinstance(result, str)
+    assert "header" in result
+
+
+def test_export_transactions_writes_to_disk_when_output_path_given(tmp_path: Path) -> None:
+    out = tmp_path / "out.csv"
+    result = _tools(tmp_path).export_transactions(format="csv", output_path=str(out))
+    assert result["status"] == "ok"
     assert result["format"] == "csv"
-    assert result["filters"] == {"project_id": "proj_x"}
+    assert out.exists()
+    assert out.read_text(encoding="utf-8") == "header\nrow1\nrow2"
+
+
+# ---------------------------------------------------------------------------
+# update_rule
+# ---------------------------------------------------------------------------
+
+
+def test_update_rule_tool_forwards_changes(tmp_path: Path) -> None:
+    result = _tools(tmp_path).update_rule("rule_1", {"active": False})
+    assert result["rule_id"] == "rule_1"
+    assert result["active"] is False
+
+
+def test_update_rule_tool_forwards_all_optional_fields(tmp_path: Path) -> None:
+    result = _tools(tmp_path).update_rule("rule_99", {"priority": 5, "active": True})
+    assert result["rule_id"] == "rule_99"
+    assert result["priority"] == 5
+
+
+# ---------------------------------------------------------------------------
+# categories
+# ---------------------------------------------------------------------------
+
+
+def test_get_categories_tool_returns_all_arrays(tmp_path: Path) -> None:
+    result = _tools(tmp_path).get_categories()
+    assert "default_categories" in result
+    assert "custom_categories" in result
+    assert "all_categories" in result
+
+
+def test_create_category_tool_returns_name(tmp_path: Path) -> None:
+    result = _tools(tmp_path).create_category("Equipment Rental")
+    assert result["name"] == "Equipment Rental"
+
+
+def test_delete_category_tool_returns_deleted(tmp_path: Path) -> None:
+    result = _tools(tmp_path).delete_category("Equipment Rental")
+    assert result == {"status": "deleted", "name": "Equipment Rental"}
+
+
+# ---------------------------------------------------------------------------
+# vendors
+# ---------------------------------------------------------------------------
+
+
+def test_get_vendors_tool_returns_custom_vendors(tmp_path: Path) -> None:
+    result = _tools(tmp_path).get_vendors()
+    assert "custom_vendors" in result
+
+
+def test_create_vendor_tool_returns_name(tmp_path: Path) -> None:
+    result = _tools(tmp_path).create_vendor("Acme Corp")
+    assert result["name"] == "Acme Corp"
+
+
+def test_delete_vendor_tool_returns_deleted(tmp_path: Path) -> None:
+    result = _tools(tmp_path).delete_vendor("Acme Corp")
+    assert result == {"status": "deleted", "name": "Acme Corp"}

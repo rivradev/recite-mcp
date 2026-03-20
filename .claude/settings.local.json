@@ -34,7 +34,14 @@
       "mcp__recite__get_batch_scan_results",
       "mcp__recite__delete_rule",
       "mcp__recite__delete_webhook",
-      "mcp__recite__delete_project"
+      "mcp__recite__delete_project",
+      "mcp__recite__get_categories",
+      "mcp__recite__get_vendors",
+      "mcp__recite__update_rule",
+      "mcp__recite__create_category",
+      "mcp__recite__create_vendor",
+      "mcp__recite__delete_category",
+      "mcp__recite__delete_vendor"
     ]
   },
   "enabledMcpjsonServers": [

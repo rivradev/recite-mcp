@@ -352,13 +352,79 @@ def _build_handlers(
     def delete_rule(rule_id: str) -> dict:
         return tools.delete_rule(rule_id)
 
+    @server.tool("update_rule")
+    def update_rule(rule_id: str, changes: dict) -> dict:
+        """Partially update a rule. The rule_type cannot be changed.
+
+        Args:
+            rule_id: UUID of the rule to update.
+            changes: Fields to update. All are optional:
+                active (bool), priority (int),
+                condition (object, simple rules), action (object, simple rules),
+                conditions (array, transaction_rule), actions (array, transaction_rule),
+                condition_operator ("AND" or "OR", transaction_rule).
+        """
+        return tools.update_rule(rule_id, changes)
+
+    @server.tool("get_categories")
+    def get_categories() -> dict:
+        """List all categories: default (17 built-in) and custom user-added ones."""
+        return tools.get_categories()
+
+    @server.tool("create_category")
+    def create_category(name: str) -> dict:
+        """Add a custom category. Duplicates (case-insensitive) are rejected. Max 100 custom categories.
+
+        Args:
+            name: Category name to add.
+        """
+        return tools.create_category(name)
+
+    @server.tool("delete_category")
+    def delete_category(name: str) -> dict:
+        """Remove a custom category by name. Default categories cannot be deleted.
+
+        Args:
+            name: Exact category name to remove (unencoded).
+        """
+        return tools.delete_category(name)
+
+    @server.tool("get_vendors")
+    def get_vendors() -> dict:
+        """List all custom vendors for the authenticated user."""
+        return tools.get_vendors()
+
+    @server.tool("create_vendor")
+    def create_vendor(name: str) -> dict:
+        """Add a custom vendor. Duplicates (case-insensitive) are rejected. Max 500 vendors.
+
+        Args:
+            name: Vendor name to add.
+        """
+        return tools.create_vendor(name)
+
+    @server.tool("delete_vendor")
+    def delete_vendor(name: str) -> dict:
+        """Remove a custom vendor by name.
+
+        Args:
+            name: Exact vendor name to remove (unencoded).
+        """
+        return tools.delete_vendor(name)
+
     @server.tool("get_usage")
     def get_usage(period: str | None = None, breakdown: str | None = None) -> dict:
         return tools.get_usage(period=period, breakdown=breakdown)
 
     @server.tool("export_transactions")
-    def export_transactions(format: str, filters: dict | None = None) -> dict:
-        return tools.export_transactions(format=format, filters=filters)
+    def export_transactions(
+        format: str,
+        output_path: str | None = None,
+        filters: dict | None = None,
+    ) -> dict:
+        return tools.export_transactions(
+            format=format, output_path=output_path, filters=filters
+        )
 
     @server.tool("update_memory")
     def update_memory(instruction: str, tags: list[str] | None = None) -> dict:

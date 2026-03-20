@@ -173,6 +173,15 @@ def test_process_receipt_raises_when_file_missing(tmp_path: Path) -> None:
         client.process_receipt(tmp_path / "nonexistent.jpg")
 
 
+def test_process_receipt_null_vendor_stored_as_empty_string(tmp_path: Path) -> None:
+    image = tmp_path / "receipt.jpg"
+    image.write_bytes(b"fake")
+    payload = _ok({"extracted_data": {"amount": 10.0, "date": "2026-01-01", "currency": "USD"}})
+    client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, payload)))
+    record = client.process_receipt(image)
+    assert record.vendor == "", "null vendor must become empty string, not the string 'None'"
+
+
 # ---------------------------------------------------------------------------
 # scan_receipt — input validation
 # ---------------------------------------------------------------------------
@@ -812,13 +821,14 @@ def test_export_transactions_returns_csv_body_when_api_responds_with_csv(
     }
 
 
-def test_export_transactions_json_returns_data(tmp_path: Path) -> None:
+def test_export_transactions_json_returns_envelope(tmp_path: Path) -> None:
     session = _Session(_Response(200, _ok({"transactions": [], "total_count": 0})))
     client = ApiClient(_settings(tmp_path), session=session)
 
     result = client.export_transactions(format="json")
 
-    assert result["total_count"] == 0
+    assert result["content_type"] == "application/json"
+    assert '"total_count": 0' in result["body"]
     assert session.last_kwargs["json"]["format"] == "json"
 
 
@@ -991,3 +1001,152 @@ def test_path_segment_with_special_chars_is_url_encoded(tmp_path: Path) -> None:
     assert session.last_url is not None
     assert "txn/weird" not in session.last_url  # raw slash would break routing
     assert "txn%2Fweird%20id" in session.last_url
+
+
+# ---------------------------------------------------------------------------
+# update_rule (PATCH /rules/:id)
+# ---------------------------------------------------------------------------
+
+
+def test_update_rule_sends_patch_with_provided_fields(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"rule_id": "rule_1", "active": False})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.update_rule("rule_1", {"active": False})
+
+    assert result["rule_id"] == "rule_1"
+    assert result["active"] is False
+    assert session.last_method == "PATCH"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/rules/rule_1")
+    assert session.last_kwargs["json"] == {"active": False}
+
+
+def test_update_rule_drops_none_values(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"rule_id": "rule_1"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.update_rule("rule_1", {"active": False, "priority": None})
+
+    assert "priority" not in session.last_kwargs["json"]
+
+
+def test_update_rule_url_encodes_rule_id(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"rule_id": "rule/special"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.update_rule("rule/special", {"active": True})
+
+    assert session.last_url is not None
+    assert "rule%2Fspecial" in session.last_url
+
+
+# ---------------------------------------------------------------------------
+# categories (GET / POST / DELETE)
+# ---------------------------------------------------------------------------
+
+
+def test_get_categories_returns_all_arrays(tmp_path: Path) -> None:
+    data = {
+        "default_categories": ["Advertising & Marketing"],
+        "custom_categories": ["Equipment Rental"],
+        "all_categories": ["Advertising & Marketing", "Equipment Rental"],
+    }
+    session = _Session(_Response(200, _ok(data)))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.get_categories()
+
+    assert result["default_categories"] == ["Advertising & Marketing"]
+    assert result["custom_categories"] == ["Equipment Rental"]
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/categories")
+
+
+def test_create_category_sends_name_and_returns_it(tmp_path: Path) -> None:
+    session = _Session(_Response(201, _ok({"name": "Equipment Rental"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.create_category("Equipment Rental")
+
+    assert result["name"] == "Equipment Rental"
+    assert session.last_method == "POST"
+    assert session.last_kwargs["json"] == {"name": "Equipment Rental"}
+    assert session.last_url is not None
+    assert session.last_url.endswith("/categories")
+
+
+def test_delete_category_returns_status_deleted(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.delete_category("Equipment Rental")
+
+    assert result == {"status": "deleted", "name": "Equipment Rental"}
+    assert session.last_method == "DELETE"
+    assert session.last_url is not None
+    assert "Equipment%20Rental" in session.last_url
+
+
+def test_delete_category_url_encodes_special_chars(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.delete_category("Food & Dining")
+
+    assert session.last_url is not None
+    assert "Food%20%26%20Dining" in session.last_url
+
+
+# ---------------------------------------------------------------------------
+# vendors (GET / POST / DELETE)
+# ---------------------------------------------------------------------------
+
+
+def test_get_vendors_returns_custom_vendors(tmp_path: Path) -> None:
+    data = {"custom_vendors": ["Acme Corp", "XYZ Ltd"]}
+    session = _Session(_Response(200, _ok(data)))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.get_vendors()
+
+    assert result["custom_vendors"] == ["Acme Corp", "XYZ Ltd"]
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/vendors")
+
+
+def test_create_vendor_sends_name_and_returns_it(tmp_path: Path) -> None:
+    session = _Session(_Response(201, _ok({"name": "Acme Corp"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.create_vendor("Acme Corp")
+
+    assert result["name"] == "Acme Corp"
+    assert session.last_method == "POST"
+    assert session.last_kwargs["json"] == {"name": "Acme Corp"}
+    assert session.last_url is not None
+    assert session.last_url.endswith("/vendors")
+
+
+def test_delete_vendor_returns_status_deleted(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.delete_vendor("Acme Corp")
+
+    assert result == {"status": "deleted", "name": "Acme Corp"}
+    assert session.last_method == "DELETE"
+    assert session.last_url is not None
+    assert "Acme%20Corp" in session.last_url
+
+
+def test_delete_vendor_url_encodes_special_chars(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.delete_vendor("Café & Bistro")
+
+    assert session.last_url is not None
+    assert "Caf%C3%A9%20%26%20Bistro" in session.last_url

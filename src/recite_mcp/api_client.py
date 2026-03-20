@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
 import time
 from pathlib import Path
@@ -46,7 +47,7 @@ class ApiClient:
 
         try:
             return ReceiptRecord(
-                vendor=str(vendor),
+                vendor=str(vendor) if vendor is not None else "",
                 date=str(date),
                 total=float(total),
                 tax=float(tax),
@@ -393,6 +394,33 @@ class ApiClient:
         self._request("DELETE", f"/rules/{_quote_path(rule_id)}")
         return {"status": "deleted", "rule_id": rule_id}
 
+    def update_rule(self, rule_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/rules/{_quote_path(rule_id)}",
+            json=_drop_none(changes),
+        )
+
+    def get_categories(self) -> dict[str, Any]:
+        return self._request("GET", "/categories")
+
+    def create_category(self, name: str) -> dict[str, Any]:
+        return self._request("POST", "/categories", json={"name": name})
+
+    def delete_category(self, name: str) -> dict[str, Any]:
+        self._request("DELETE", f"/categories/{_quote_path(name)}")
+        return {"status": "deleted", "name": name}
+
+    def get_vendors(self) -> dict[str, Any]:
+        return self._request("GET", "/vendors")
+
+    def create_vendor(self, name: str) -> dict[str, Any]:
+        return self._request("POST", "/vendors", json={"name": name})
+
+    def delete_vendor(self, name: str) -> dict[str, Any]:
+        self._request("DELETE", f"/vendors/{_quote_path(name)}")
+        return {"status": "deleted", "name": name}
+
     def get_usage(
         self, *, period: str | None = None, breakdown: str | None = None
     ) -> dict[str, Any]:
@@ -405,9 +433,12 @@ class ApiClient:
     def export_transactions(
         self, *, format: str, filters: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        return self._request(
+        result = self._request(
             "POST", "/export", json=_drop_none({"format": format, "filters": filters})
         )
+        if "content_type" not in result:
+            return {"content_type": "application/json", "body": json.dumps(result)}
+        return result
 
     def _build_scan_payload(
         self,

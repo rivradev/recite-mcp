@@ -1,6 +1,6 @@
 # E2E Test Plan — recite-mcp (2026-03-17)
 
-All 33 MCP tools + 3 resources are covered in sequence. Tests are ordered so each phase
+All 40 MCP tools + 3 resources are covered in sequence. Tests are ordered so each phase
 leaves artifacts consumed by the next, and a final cleanup phase deletes everything created.
 
 ---
@@ -42,7 +42,11 @@ python -m recite_mcp.server --version
 RECITE_API_KEY="" python -m recite_mcp.server --validate
 ```
 
-**Pass:** JSON printed with `"has_api_key": false` and `"issues": ["missing_api_key"]`; exit code 1.
+**Pass:** JSON printed with the shape `{"config": {...}, "health": {...}}` where
+`health.has_api_key` is `false` and `health.issues` contains `"missing_api_key"`; exit code 1.
+
+> **Note:** The response wraps both `config` and `health` objects. The assertions below refer
+> to fields inside `health`, not at the top level.
 
 ### 0-C: Validate with API key
 
@@ -50,7 +54,13 @@ RECITE_API_KEY="" python -m recite_mcp.server --validate
 RECITE_API_KEY="re_live_xxx" python -m recite_mcp.server --validate
 ```
 
-**Pass:** JSON printed with `"has_api_key": true`, `"issues": []`; exit code 0.
+Replace `re_live_xxx` with the actual key value from `.mcp.json` or your secrets store.
+
+**Pass:** JSON printed where `health.has_api_key` is `true` and `health.issues` is `[]`; exit code 0.
+
+> **Note:** The MCP server process reads `RECITE_API_KEY` and `RECITE_HOME` from `.mcp.json`'s
+> `env` block. A plain bash shell does not inherit these. To run Phase 0-C from bash you must
+> either source those values manually or read the key from `.mcp.json` before running.
 
 ### 0-D: Configure MCP client
 
@@ -76,17 +86,26 @@ Reload Claude Code and run `/mcp`. **Pass:** `recite` server listed as connected
 
 Clear the local ledger and memory files so Phase 2 empty-state assertions are reliable on every run.
 
+> **Important:** Use the `recite_home` path reported by `get_config` (T01), **not** `$RECITE_HOME`
+> from the shell. The MCP server sets its own home via `.mcp.json` env and it may differ from the
+> shell default (`~/.config/recite`). Call `get_config` first to get the correct path.
+
+```
+Call get_config → note the recite_home value (e.g. C:\...\recite_mcp\.recite)
+```
+
 **Windows (PowerShell):**
 ```powershell
-$home = $env:RECITE_HOME   # e.g. C:\...\recite_mcp\.recite
+$home = "C:\...\recite_mcp\.recite"   # paste recite_home value from get_config
 Remove-Item "$home\bookkeeping_transactions.csv" -ErrorAction SilentlyContinue
 Remove-Item "$home\long_term_memory.md" -ErrorAction SilentlyContinue
 ```
 
 **Unix / macOS:**
 ```bash
-rm -f "$RECITE_HOME/bookkeeping_transactions.csv"
-rm -f "$RECITE_HOME/long_term_memory.md"
+home="<recite_home from get_config>"
+rm -f "$home/bookkeeping_transactions.csv"
+rm -f "$home/long_term_memory.md"
 ```
 
 **Pass:** Both files absent (the server recreates them on first use).
@@ -128,6 +147,34 @@ Call list_webhooks
 ```
 Call list_rules
 → For each rule where condition={"vendor":"Coffee"}: Call delete_rule with rule_id="<id>"
+```
+
+**Delete stale rename outputs** (T11 leaves a dated file in `receipts/` after each run):
+```bash
+# Remove any dated rename output that matches the T11 fixture pattern.
+# The fixture (rename_test_raw.png) scans as Best Buy; delete any output
+# named YYYY-MM-DD_BestBuy_<amount>.png that is NOT the 2026-03-18 baseline.
+ls receipts/ | grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}_BestBuy_" | grep -v "^2026-03-18_" | xargs -I{} rm -f "receipts/{}"
+```
+*(macOS / Linux — adjust path separator for Windows)*
+
+**Windows (PowerShell):**
+```powershell
+Get-ChildItem receipts\*BestBuy*.png |
+  Where-Object { $_.Name -notlike "2026-03-18_BestBuy*" } |
+  Remove-Item
+```
+
+**Delete stale categories:**
+```
+Call get_categories
+→ If "E2E Custom Category" appears in custom_categories: Call delete_category with name="E2E Custom Category"
+```
+
+**Delete stale vendors:**
+```
+Call get_vendors
+→ If "E2E Test Vendor Co" appears in custom_vendors: Call delete_vendor with name="E2E Test Vendor Co"
 ```
 
 **Pass:** All the above queries return empty lists (or lists containing only non-test data).
@@ -208,10 +255,10 @@ Read resource recite://ledger
 Call scan_receipt with file_path="<path/to/receipt_1.jpg>", ephemeral=true
 ```
 **Assert:**
-- `vendor` is not empty
-- `total` is a positive number
-- `date` is present
-- No scan ID saved server-side (ephemeral)
+- `extracted_data.vendor` is not empty
+- `extracted_data.amount` is a positive number (field is `amount`, not `total`)
+- `extracted_data.date` is present
+- No `scan_id` in response (ephemeral)
 
 ### T07 — `scan_receipt` with save (capture scan_id)
 ```
@@ -219,7 +266,7 @@ Call scan_receipt with file_path="<path/to/receipt_1.jpg>", ephemeral=false
 ```
 **Assert:**
 - Same fields as T06
-- Response includes a `scan_id` (save for T08)
+- Response includes a top-level `scan_id` (save for T08)
 
 ### T08 — `get_scan`
 ```
@@ -247,14 +294,35 @@ rename=false, dry_run=false
 - `ledger_entry.entry_type: "receipt"`
 
 ### T11 — `process_receipt` with rename
+
+> **Important:** Use the dedicated rename fixture `receipts/rename_test_raw.png`,
+> **not** a file already named in `YYYY-MM-DD_Vendor_Amount` format. Using a
+> pre-named file makes `renamed_to` equal to the original path (no-op rename),
+> which passes the assertions but does not exercise the rename code path.
+> The fixture is a copy of an existing receipt saved under an unformatted name.
+
 ```
-Call process_receipt with file_path="<path/to/receipt_2.jpg>",
+Call process_receipt with file_path="<repo_root>/receipts/rename_test_raw.png",
 rename=true, dry_run=false
 ```
 **Assert:**
 - `renamed_to` field is not null
-- Renamed file follows pattern `YYYY-MM-DD_Vendor_Amount.jpg`
-- File exists at the new path
+- `renamed_to` **differs from** the input path (actual rename occurred)
+- Renamed file follows pattern `YYYY-MM-DD_Vendor_Amount.png`
+- File exists at the `renamed_to` path
+- Original path `rename_test_raw.png` no longer exists
+
+**Restore fixture after test:**
+```bash
+# Re-create the fixture for the next run (copy any existing receipt)
+cp receipts/<any_existing_receipt>.png receipts/rename_test_raw.png
+
+# IMPORTANT: Also delete the dated rename output so the next run has a clean target.
+# The output name matches whatever date/vendor/amount the fixture scans as.
+# If the fixture is a Best Buy receipt, the output will be YYYY-MM-DD_BestBuy_NNN.png.
+# Remove it (keep the 2026-03-18 baseline):
+ls receipts/ | grep -E "^[0-9]{4}-[0-9]{2}-[0-9]{2}_BestBuy_" | grep -v "^2026-03-18_" | xargs -I{} rm -f "receipts/{}"
+```
 
 ---
 
@@ -481,36 +549,89 @@ Call list_rules
 ```
 **Assert:** rule from T33 appears (matched by `rule_id`).
 
+### T35 — `update_rule`
+```
+Call update_rule with rule_id="<test_rule_id from T33>",
+changes={"active": false}
+```
+**Assert:**
+- Response includes the full updated rule object
+- `active: false` is reflected in the response
+- `rule_id` matches `test_rule_id`
+
+Re-enable for cleanup:
+```
+Call update_rule with rule_id="<test_rule_id from T33>",
+changes={"active": true}
+```
+**Assert:** `active: true` in response.
+
 ---
 
-## Phase 10 — Analytics & Export
+## Phase 10 — Preferences (Categories & Vendors)
 
-### T35 — `get_summary`
+### T36 — `get_categories` (initial state)
+```
+Call get_categories
+```
+**Assert:**
+- Response contains `default_categories`, `custom_categories`, and `all_categories`
+- `default_categories` has exactly 17 entries (the built-in list)
+- `all_categories` is the sorted union of both arrays
+
+### T37 — `create_category`
+```
+Call create_category with name="E2E Custom Category"
+```
+**Assert:**
+- Response has `name: "E2E Custom Category"`
+- Calling `get_categories` again shows `"E2E Custom Category"` in `custom_categories` and `all_categories`
+
+### T38 — `get_vendors` (initial state)
+```
+Call get_vendors
+```
+**Assert:**
+- Response contains `custom_vendors` (may be empty or contain pre-existing vendors)
+
+### T39 — `create_vendor`
+```
+Call create_vendor with name="E2E Test Vendor Co"
+```
+**Assert:**
+- Response has `name: "E2E Test Vendor Co"`
+- Calling `get_vendors` again shows `"E2E Test Vendor Co"` in `custom_vendors`
+
+---
+
+## Phase 11 — Analytics & Export
+
+### T40 — `get_summary`
 ```
 Call get_summary with period="month"
 ```
 **Assert:** response has totals, count, or grouped breakdown.
 
-### T36 — `get_summary` by date range
+### T41 — `get_summary` by date range
 ```
 Call get_summary with start_date="2026-03-01", end_date="2026-03-31",
 group_by="category"
 ```
 **Assert:** response includes the transactions created in Phase 7.
 
-### T37 — `get_usage`
+### T42 — `get_usage`
 ```
 Call get_usage with period="month"
 ```
 **Assert:** shows scan count for current month (should be > 0 after Phase 3).
 
-### T38 — `export_transactions` CSV
+### T43 — `export_transactions` CSV
 ```
 Call export_transactions with format="csv"
 ```
 **Assert:** returns CSV content or download URL.
 
-### T39 — `export_transactions` JSON
+### T44 — `export_transactions` JSON
 ```
 Call export_transactions with format="json"
 ```
@@ -518,23 +639,37 @@ Call export_transactions with format="json"
 
 ---
 
-## Phase 11 — Cleanup
+## Phase 12 — Cleanup
 
 Delete everything created during the test to keep the account clean.
 
-### T40 — Delete test rule
+### T45 — Delete test category
+```
+Call delete_category with name="E2E Custom Category"
+```
+**Assert:** `{"status": "deleted", "name": "E2E Custom Category"}` returned.
+Verify: calling `get_categories` no longer shows it in `custom_categories`.
+
+### T46 — Delete test vendor
+```
+Call delete_vendor with name="E2E Test Vendor Co"
+```
+**Assert:** `{"status": "deleted", "name": "E2E Test Vendor Co"}` returned.
+Verify: calling `get_vendors` no longer shows it in `custom_vendors`.
+
+### T47 — Delete test rule
 ```
 Call delete_rule with rule_id="<test_rule_id from T33>"
 ```
 **Assert:** success response.
 
-### T41 — Delete test webhook
+### T48 — Delete test webhook
 ```
 Call delete_webhook with webhook_id="<test_webhook_id from T31>"
 ```
 **Assert:** success response.
 
-### T42 — Delete imported transactions
+### T49 — Delete imported transactions
 ```
 Call list_transactions with vendor="Import Test A"
 → delete each returned transaction_id
@@ -545,13 +680,13 @@ Call list_transactions with vendor="CSV Vendor"
 ```
 **Assert:** all deletes succeed.
 
-### T43 — Delete E2E test transaction
+### T50 — Delete E2E test transaction
 ```
 Call delete_transaction with transaction_id="<test_transaction_id from T22>"
 ```
 **Assert:** success response.
 
-### T44 — Delete test project
+### T51 — Delete test project
 ```
 Call delete_project with project_id="<test_project_id from T19>"
 ```
@@ -572,11 +707,12 @@ Call delete_project with project_id="<test_project_id from T19>"
 | 6 — Projects | `create_project`, `list_projects`, `update_project` | ✓ | — |
 | 7 — Transactions | `create_transaction`, `list_transactions`, `get_transaction`, `update_transaction`, `import_transactions` | ✓ | — |
 | 8 — Async batch | `submit_batch_scans`, `get_batch_scan_status`, `get_batch_scan_results` | ✓ | — |
-| 9 — Webhooks/Rules | `create_webhook`, `list_webhooks`, `create_rule`, `list_rules` | ✓ | — |
-| 10 — Analytics | `get_summary`, `get_usage`, `export_transactions` | ✓ | — |
-| 11 — Cleanup | `delete_rule`, `delete_webhook`, `delete_transaction`, `delete_project` | ✓ | — |
+| 9 — Webhooks/Rules | `create_webhook`, `list_webhooks`, `create_rule`, `list_rules`, `update_rule` | ✓ | — |
+| 10 — Preferences | `get_categories`, `create_category`, `get_vendors`, `create_vendor` | ✓ | — |
+| 11 — Analytics | `get_summary`, `get_usage`, `export_transactions` | ✓ | — |
+| 12 — Cleanup | `delete_category`, `delete_vendor`, `delete_rule`, `delete_webhook`, `delete_transaction`, `delete_project` | ✓ | — |
 
-**Total: 33 tools + 3 resources = 36 test targets**
+**Total: 40 tools + 3 resources = 43 test targets**
 
 ---
 
@@ -586,9 +722,10 @@ Call delete_project with project_id="<test_project_id from T19>"
 - [ ] 2× receipt JPG/PNG images ready (real receipts or clear sample photos)
 - [ ] 1× receipt PDF ready (optional, for batch testing)
 - [ ] A folder containing those images, e.g., `~/receipts/`
+- [ ] `receipts/rename_test_raw.png` fixture exists (copy of any receipt with an unformatted name — used by T11)
 - [ ] A free webhook test URL from https://webhook.site
 - [ ] `.mcp.json` created with your API key
 - [ ] Claude Code reloaded and `recite` server showing as connected (`/mcp`)
 - [ ] Phase 0-C passes (exit code 0 from `--validate`)
 - [ ] Phase 0-E run: `bookkeeping_transactions.csv` and `long_term_memory.md` deleted from `$RECITE_HOME`
-- [ ] Phase 0-F run (if re-running): no leftover "E2E Test" artifacts in list_projects / list_transactions / list_webhooks / list_rules
+- [ ] Phase 0-F run (if re-running): no leftover "E2E Test" artifacts in list_projects / list_transactions / list_webhooks / list_rules / get_categories / get_vendors

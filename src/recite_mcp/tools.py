@@ -53,16 +53,30 @@ class ReciteTools:
         if dry_run:
             return ProcessResult(status="ok", message="dry_run", receipt=receipt)
 
-        entry = self._ledger.append_receipt(receipt, source_file=str(path))
         renamed_to = None
         if rename:
-            renamed_to = self._rename_file(path, entry.vendor, entry.date, entry.total)
+            try:
+                renamed_to, _ = self._rename_file(
+                    path, receipt.vendor, receipt.date, receipt.total
+                )
+                path = Path(renamed_to)
+            except FileExistsError as exc:
+                return ProcessResult(
+                    status="error",
+                    message=str(exc),
+                    receipt=receipt,
+                    renamed_to=None,
+                    warnings=[],
+                )
+
+        entry = self._ledger.append_receipt(receipt, source_file=str(path))
         return ProcessResult(
             status="ok",
             message="processed",
             ledger_entry=entry,
             receipt=receipt,
             renamed_to=renamed_to,
+            warnings=[],
         )
 
     def scan_receipt(
@@ -279,15 +293,46 @@ class ReciteTools:
     def delete_rule(self, rule_id: str) -> dict[str, Any]:
         return self._api_client.delete_rule(rule_id)
 
+    def update_rule(self, rule_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        return self._api_client.update_rule(rule_id, changes)
+
+    def get_categories(self) -> dict[str, Any]:
+        return self._api_client.get_categories()
+
+    def create_category(self, name: str) -> dict[str, Any]:
+        return self._api_client.create_category(name)
+
+    def delete_category(self, name: str) -> dict[str, Any]:
+        return self._api_client.delete_category(name)
+
+    def get_vendors(self) -> dict[str, Any]:
+        return self._api_client.get_vendors()
+
+    def create_vendor(self, name: str) -> dict[str, Any]:
+        return self._api_client.create_vendor(name)
+
+    def delete_vendor(self, name: str) -> dict[str, Any]:
+        return self._api_client.delete_vendor(name)
+
     def get_usage(
         self, *, period: str | None = None, breakdown: str | None = None
     ) -> dict[str, Any]:
         return self._api_client.get_usage(period=period, breakdown=breakdown)
 
     def export_transactions(
-        self, *, format: str, filters: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        return self._api_client.export_transactions(format=format, filters=filters)
+        self,
+        *,
+        format: str,
+        output_path: str | None = None,
+        filters: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | str:
+        result = self._api_client.export_transactions(format=format, filters=filters)
+        if output_path is not None:
+            path = Path(output_path).expanduser().resolve()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(result["body"], encoding="utf-8")
+            return {"status": "ok", "path": str(path), "format": format}
+        return result["body"]
 
     def process_receipts_batch(
         self,
@@ -309,8 +354,8 @@ class ReciteTools:
                 status="ok",
                 processed=0,
                 failed=0,
-                preview_count=len(files),
                 items=[{"file": str(p), "status": "preview"} for p in files],
+                preview_count=len(files),
             )
 
         items: list[dict] = []
@@ -337,7 +382,6 @@ class ReciteTools:
             status="ok",
             processed=processed,
             failed=failed,
-            preview_count=0,
             items=items,
         )
 
@@ -370,7 +414,9 @@ class ReciteTools:
         return {"status": "ok", "path": str(file_path)}
 
     @staticmethod
-    def _rename_file(path: Path, vendor: str, date: str, total: float) -> str:
+    def _rename_file(
+        path: Path, vendor: str, date: str, total: float
+    ) -> tuple[str, str | None]:
         # Treat Python None-as-string and other null-like values as absent.
         vendor_normalized = "" if vendor in ("None", "null", "N/A", "") else vendor
         safe_vendor = (
@@ -383,9 +429,13 @@ class ReciteTools:
             f"{date}_{safe_vendor}_{total:.2f}{path.suffix.lower()}"
         )
         if target == path:
-            return str(target)
-        # Use replace() instead of rename() so the operation succeeds on
-        # Windows even when the target file already exists (rename() raises
-        # FileExistsError on Windows when the destination is present).
+            return str(target), None
+        if target.exists():
+            raise FileExistsError(
+                f"Cannot rename: destination already exists: {target.name}"
+            )
+        # Use replace() instead of rename() so the operation is atomic on
+        # Windows (rename() raises FileExistsError on Windows when the
+        # destination is present, but we guard against that above).
         path.replace(target)
-        return str(target)
+        return str(target), None

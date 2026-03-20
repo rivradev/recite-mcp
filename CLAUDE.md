@@ -35,7 +35,7 @@ python -m recite_mcp.server --validate
 
 ```
 src/recite_mcp/
-├── server.py       # MCP entry point — registers 33 tools + 3 resources via FastMCP
+├── server.py       # MCP entry point — registers 40 tools + 3 resources via FastMCP
 ├── tools.py        # ReciteTools — orchestrates local + API operations
 ├── api_client.py   # ApiClient — all HTTP calls to the Recite REST API
 ├── config.py       # Settings — loads RECITE_API_KEY / RECITE_HOME
