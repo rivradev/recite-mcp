@@ -50,3 +50,7 @@ Thumbs.db
 
 plans/
 receipts/
+
+AGENTS.md
+CLAUDE.md
+.claude/
