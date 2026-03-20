@@ -43,14 +43,37 @@ def _serialize(value: Any) -> Any:
     return value
 
 
-def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider, settings: Any) -> Any:
+def _build_handlers(
+    server: Any, tools: ReciteTools, resources: ResourceProvider, settings: Any
+) -> Any:
     @server.tool("process_receipt")
-    def process_receipt(file_path: str, rename: bool = False, category_hint: str | None = None, dry_run: bool = False) -> dict:
-        return _serialize(tools.process_receipt(file_path=file_path, rename=rename, category_hint=category_hint, dry_run=dry_run))
+    def process_receipt(
+        file_path: str,
+        rename: bool = False,
+        category_hint: str | None = None,
+        dry_run: bool = False,
+    ) -> dict:
+        return _serialize(
+            tools.process_receipt(
+                file_path=file_path,
+                rename=rename,
+                category_hint=category_hint,
+                dry_run=dry_run,
+            )
+        )
 
     @server.tool("process_receipts_batch")
-    def process_receipts_batch(input_dir: str, rename: bool = False, dry_run: bool = True, recursive: bool = True) -> dict:
-        return _serialize(tools.process_receipts_batch(input_dir=input_dir, rename=rename, dry_run=dry_run, recursive=recursive))
+    def process_receipts_batch(
+        input_dir: str,
+        rename: bool = False,
+        dry_run: bool = True,
+        recursive: bool = True,
+    ) -> dict:
+        return _serialize(
+            tools.process_receipts_batch(
+                input_dir=input_dir, rename=rename, dry_run=dry_run, recursive=recursive
+            )
+        )
 
     @server.tool("scan_receipt")
     def scan_receipt(
@@ -70,7 +93,7 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         """Scan a receipt using the Recite API to extract financial data.
 
         Provide exactly one input: file_path, image_url, image_base64, or raw_text.
-        
+
         Args:
             file_path: Local path to an image.
             image_url: Publicly accessible URL (must use https).
@@ -106,6 +129,20 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
 
     @server.tool("create_transaction")
     def create_transaction(transaction: dict) -> dict:
+        """Create a transaction in the Recite API.
+
+        Required fields:
+            date: Transaction date (YYYY-MM-DD).
+            amount: Monetary amount (use 'amount', not 'total').
+            transaction_type: One of Expense, Income, Asset, Liability, Equity.
+            category: Category string.
+            payment_method: Payment method string (e.g. "Credit Card").
+
+        Optional fields: vendor, description, project_id, metadata, tags.
+
+        Note: The local ledger uses 'total' for the same concept. When moving
+        data from local ledger to API transactions, map 'total' -> 'amount'.
+        """
         return tools.create_transaction(transaction)
 
     @server.tool("list_transactions")
@@ -171,7 +208,7 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         """Import multiple transactions at once.
 
         Provide exactly one data source: transactions (list), csv_text, or csv_file_path.
-        
+
         Args:
             transactions: List of transaction objects to import.
             csv_text: Raw CSV string content.
@@ -197,9 +234,9 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         webhook_secret: str | None = None,
     ) -> dict:
         """Submit multiple receipts for asynchronous batch processing.
-        
+
         Args:
-            items: List of 1-20 task items. Each must provide exactly one of 
+            items: List of 1-20 task items. Each must provide exactly one of
                    file_path, image_url, or image_base64.
             auto_save: Auto-create transactions for successful scans.
             save_threshold: Confidence threshold for auto-saving.
@@ -231,7 +268,9 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         offset: int | None = None,
         format: str | None = None,
     ) -> dict:
-        return tools.list_projects(status=status, limit=limit, offset=offset, format=format)
+        return tools.list_projects(
+            status=status, limit=limit, offset=offset, format=format
+        )
 
     @server.tool("create_project")
     def create_project(name: str, description: str | None = None) -> dict:
@@ -244,7 +283,9 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         description: str | None = None,
         status: str | None = None,
     ) -> dict:
-        return tools.update_project(project_id, name=name, description=description, status=status)
+        return tools.update_project(
+            project_id, name=name, description=description, status=status
+        )
 
     @server.tool("delete_project")
     def delete_project(project_id: str) -> dict:
@@ -268,6 +309,15 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
 
     @server.tool("create_webhook")
     def create_webhook(url: str, events: list[str], secret: str | None = None) -> dict:
+        """Create a webhook subscription.
+
+        Args:
+            url: Webhook endpoint URL.
+            events: List of event types. Valid values:
+                transaction.created, transaction.updated,
+                transaction.deleted, batch.completed.
+            secret: Optional HMAC-SHA256 signing secret.
+        """
         return tools.create_webhook(url=url, events=events, secret=secret)
 
     @server.tool("list_webhooks")
@@ -279,8 +329,20 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         return tools.delete_webhook(webhook_id)
 
     @server.tool("create_rule")
-    def create_rule(rule_type: str, condition: dict, action: dict, priority: int | None = None) -> dict:
-        return tools.create_rule(rule_type=rule_type, condition=condition, action=action, priority=priority)
+    def create_rule(
+        rule_type: str, condition: dict, action: dict, priority: int | None = None
+    ) -> dict:
+        """Create an automation rule.
+
+        Args:
+            rule_type: One of: vendor_category, default_project, processing_preference.
+            condition: Condition object (e.g. {"vendor": "Starbucks"}).
+            action: Action object (e.g. {"set_category": "Coffee"}).
+            priority: Optional priority integer (higher = first).
+        """
+        return tools.create_rule(
+            rule_type=rule_type, condition=condition, action=action, priority=priority
+        )
 
     @server.tool("list_rules")
     def list_rules(limit: int | None = None, offset: int | None = None) -> dict:
@@ -290,13 +352,79 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
     def delete_rule(rule_id: str) -> dict:
         return tools.delete_rule(rule_id)
 
+    @server.tool("update_rule")
+    def update_rule(rule_id: str, changes: dict) -> dict:
+        """Partially update a rule. The rule_type cannot be changed.
+
+        Args:
+            rule_id: UUID of the rule to update.
+            changes: Fields to update. All are optional:
+                active (bool), priority (int),
+                condition (object, simple rules), action (object, simple rules),
+                conditions (array, transaction_rule), actions (array, transaction_rule),
+                condition_operator ("AND" or "OR", transaction_rule).
+        """
+        return tools.update_rule(rule_id, changes)
+
+    @server.tool("get_categories")
+    def get_categories() -> dict:
+        """List all categories: default (17 built-in) and custom user-added ones."""
+        return tools.get_categories()
+
+    @server.tool("create_category")
+    def create_category(name: str) -> dict:
+        """Add a custom category. Duplicates (case-insensitive) are rejected. Max 100 custom categories.
+
+        Args:
+            name: Category name to add.
+        """
+        return tools.create_category(name)
+
+    @server.tool("delete_category")
+    def delete_category(name: str) -> dict:
+        """Remove a custom category by name. Default categories cannot be deleted.
+
+        Args:
+            name: Exact category name to remove (unencoded).
+        """
+        return tools.delete_category(name)
+
+    @server.tool("get_vendors")
+    def get_vendors() -> dict:
+        """List all custom vendors for the authenticated user."""
+        return tools.get_vendors()
+
+    @server.tool("create_vendor")
+    def create_vendor(name: str) -> dict:
+        """Add a custom vendor. Duplicates (case-insensitive) are rejected. Max 500 vendors.
+
+        Args:
+            name: Vendor name to add.
+        """
+        return tools.create_vendor(name)
+
+    @server.tool("delete_vendor")
+    def delete_vendor(name: str) -> dict:
+        """Remove a custom vendor by name.
+
+        Args:
+            name: Exact vendor name to remove (unencoded).
+        """
+        return tools.delete_vendor(name)
+
     @server.tool("get_usage")
     def get_usage(period: str | None = None, breakdown: str | None = None) -> dict:
         return tools.get_usage(period=period, breakdown=breakdown)
 
     @server.tool("export_transactions")
-    def export_transactions(format: str, filters: dict | None = None) -> dict:
-        return tools.export_transactions(format=format, filters=filters)
+    def export_transactions(
+        format: str,
+        output_path: str | None = None,
+        filters: dict | None = None,
+    ) -> dict:
+        return tools.export_transactions(
+            format=format, output_path=output_path, filters=filters
+        )
 
     @server.tool("update_memory")
     def update_memory(instruction: str, tags: list[str] | None = None) -> dict:
@@ -307,8 +435,14 @@ def _build_handlers(server: Any, tools: ReciteTools, resources: ResourceProvider
         return tools.list_memory()
 
     @server.tool("add_ledger_correction")
-    def add_ledger_correction(original_entry_id: str, corrected_fields: dict, reason: str) -> dict:
-        return tools.add_ledger_correction(original_entry_id=original_entry_id, corrected_fields=corrected_fields, reason=reason)
+    def add_ledger_correction(
+        original_entry_id: str, corrected_fields: dict, reason: str
+    ) -> dict:
+        return tools.add_ledger_correction(
+            original_entry_id=original_entry_id,
+            corrected_fields=corrected_fields,
+            reason=reason,
+        )
 
     @server.tool("summarize_ledger")
     def summarize_ledger(group_by: str = "vendor") -> dict:

@@ -139,11 +139,29 @@ If installed via `pipx` or `pip`, use:
 
 ## Main Features
 
-- Full Recite API MCP tools for scans, transactions, imports, batch jobs, projects, summaries, webhooks, rules, usage, and exports
-- Ephemeral scan support so agents can process receipts without persisting scan records server-side
-- Local single-receipt processing, batch dry-run preview, and optional file rename
-- Local CSV ledger append, audit-safe correction entries, and memory instruction storage
-- Resource providers for ledger, memory, and health status
+**API tools (40 total):**
+
+- **Scans** — `scan_receipt` (file, URL, base64, or raw text; ephemeral mode), `get_scan`
+- **Transactions** — create, list (with filters), get, update, delete, `import_transactions` (JSON list, CSV text, or CSV file)
+- **Batch scans** — `submit_batch_scans` (1–20 items, async, webhook notification), `get_batch_scan_status`, `get_batch_scan_results`
+- **Projects** — list, create, update, delete
+- **Summaries** — `get_summary` (period, date range, group-by)
+- **Webhooks** — create, list, delete (`transaction.created/updated/deleted`, `batch.completed`)
+- **Rules** — create, list, update, delete (vendor_category, default_project, processing_preference)
+- **Categories** — `get_categories` (17 built-in + custom), `create_category`, `delete_category`
+- **Vendors** — `get_vendors`, `create_vendor`, `delete_vendor`
+- **Usage** — `get_usage` (period, breakdown)
+- **Exports** — `export_transactions` (CSV/JSON, optional file save)
+
+**Local tools:**
+
+- `process_receipt` — scan + ledger append in one step (optional rename, dry-run, category hint)
+- `process_receipts_batch` — scan a directory of images/PDFs (recursive, dry-run preview)
+- `summarize_ledger`, `export_ledger`, `add_ledger_correction` — local CSV ledger management
+- `update_memory`, `list_memory` — persistent agent instruction storage
+- `get_config`, `validate_setup` — configuration inspection and health check
+
+**Resources:** `recite://ledger`, `recite://memory`, `recite://health`
 
 ## Documentation
 

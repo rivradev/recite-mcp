@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
+import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -10,6 +12,10 @@ import requests
 
 from recite_mcp.config import Settings
 from recite_mcp.models import ReceiptRecord
+
+_MAX_RETRIES = 3
+_RETRY_BACKOFF_BASE = 0.5
+_RETRYABLE_EXCEPTIONS = (ConnectionResetError, ConnectionError, OSError)
 
 
 class ApiClientError(RuntimeError):
@@ -30,7 +36,9 @@ class ApiClient:
         if not isinstance(extracted, dict):
             raise ApiClientError(f"Invalid response payload: {data}")
 
-        vendor = _pick_first(extracted, "vendor", "merchant_name", "merchant", "store_name")
+        vendor = _pick_first(
+            extracted, "vendor", "merchant_name", "merchant", "store_name"
+        )
         date = _pick_first(extracted, "date", "transaction_date", "purchase_date")
         total = _pick_first(extracted, "total", "amount", "total_amount", default=0.0)
         tax = _pick_first(extracted, "tax", "sales_tax", "tax_amount", default=0.0)
@@ -39,7 +47,7 @@ class ApiClient:
 
         try:
             return ReceiptRecord(
-                vendor=str(vendor),
+                vendor=str(vendor) if vendor is not None else "",
                 date=str(date),
                 total=float(total),
                 tax=float(tax),
@@ -68,7 +76,7 @@ class ApiClient:
         """Scan a receipt using the Recite API to extract financial data.
 
         Provide exactly one input: file_path, image_url, image_base64, or raw_text.
-        
+
         Args:
             file_path: Local path to an image.
             image_url: Publicly accessible URL (must use https).
@@ -103,6 +111,20 @@ class ApiClient:
         return self._request("GET", f"/scan/{_quote_path(scan_id)}")
 
     def create_transaction(self, transaction: dict[str, Any]) -> dict[str, Any]:
+        """Create a transaction in the Recite API.
+
+        Required fields:
+            date: Transaction date (YYYY-MM-DD).
+            amount: Monetary amount (use 'amount', not 'total').
+            transaction_type: One of Expense, Income, Asset, Liability, Equity.
+            category: Category string.
+            payment_method: Payment method string (e.g. "Credit Card").
+
+        Optional fields: vendor, description, project_id, metadata, tags.
+
+        Note: The local ledger uses 'total' for the same concept. When moving
+        data from local ledger to API transactions, map 'total' -> 'amount'.
+        """
         return self._request("POST", "/transactions", json=_drop_none(transaction))
 
     def list_transactions(
@@ -152,8 +174,14 @@ class ApiClient:
     def get_transaction(self, transaction_id: str) -> dict[str, Any]:
         return self._request("GET", f"/transactions/{_quote_path(transaction_id)}")
 
-    def update_transaction(self, transaction_id: str, changes: dict[str, Any]) -> dict[str, Any]:
-        return self._request("PATCH", f"/transactions/{_quote_path(transaction_id)}", json=_drop_none(changes))
+    def update_transaction(
+        self, transaction_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/transactions/{_quote_path(transaction_id)}",
+            json=_drop_none(changes),
+        )
 
     def delete_transaction(self, transaction_id: str) -> dict[str, Any]:
         self._request("DELETE", f"/transactions/{_quote_path(transaction_id)}")
@@ -171,7 +199,7 @@ class ApiClient:
         """Import multiple transactions at once.
 
         Provide exactly one data source: transactions (list), csv_text, or csv_file_path.
-        
+
         Args:
             transactions: List of transaction objects to import.
             csv_text: Raw CSV string content.
@@ -185,7 +213,9 @@ class ApiClient:
             csv_file_path is not None,
         ]
         if sum(provided) != 1:
-            raise ApiClientError("Provide exactly one of transactions, csv_text, or csv_file_path.")
+            raise ApiClientError(
+                "Provide exactly one of transactions, csv_text, or csv_file_path."
+            )
 
         if transactions is not None:
             payload = {"transactions": transactions}
@@ -197,7 +227,9 @@ class ApiClient:
 
         params = _drop_none(
             {
-                "all_or_nothing": _bool_query_param(all_or_nothing) if all_or_nothing is not None else None,
+                "all_or_nothing": _bool_query_param(all_or_nothing)
+                if all_or_nothing is not None
+                else None,
                 "project_id": project_id,
             }
         )
@@ -234,9 +266,9 @@ class ApiClient:
         webhook_secret: str | None = None,
     ) -> dict[str, Any]:
         """Submit multiple receipts for asynchronous batch processing.
-        
+
         Args:
-            items: List of 1-20 task items. Each must provide exactly one of 
+            items: List of 1-20 task items. Each must provide exactly one of
                    file_path, image_url, or image_base64.
             auto_save: Auto-create transactions for successful scans.
             save_threshold: Confidence threshold for auto-saving.
@@ -269,11 +301,19 @@ class ApiClient:
         offset: int | None = None,
         format: str | None = None,
     ) -> dict[str, Any]:
-        params = _drop_none({"status": status, "limit": limit, "offset": offset, "format": format})
+        params = _drop_none(
+            {"status": status, "limit": limit, "offset": offset, "format": format}
+        )
         return self._request("GET", "/projects", params=params)
 
-    def create_project(self, *, name: str, description: str | None = None) -> dict[str, Any]:
-        return self._request("POST", "/projects", json=_drop_none({"name": name, "description": description}))
+    def create_project(
+        self, *, name: str, description: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/projects",
+            json=_drop_none({"name": name, "description": description}),
+        )
 
     def update_project(
         self,
@@ -283,8 +323,12 @@ class ApiClient:
         description: str | None = None,
         status: str | None = None,
     ) -> dict[str, Any]:
-        payload = _drop_none({"name": name, "description": description, "status": status})
-        return self._request("PATCH", f"/projects/{_quote_path(project_id)}", json=payload)
+        payload = _drop_none(
+            {"name": name, "description": description, "status": status}
+        )
+        return self._request(
+            "PATCH", f"/projects/{_quote_path(project_id)}", json=payload
+        )
 
     def delete_project(self, project_id: str) -> dict[str, Any]:
         self._request("DELETE", f"/projects/{_quote_path(project_id)}")
@@ -310,8 +354,14 @@ class ApiClient:
         )
         return self._request("GET", "/summary", params=params)
 
-    def create_webhook(self, *, url: str, events: list[str], secret: str | None = None) -> dict[str, Any]:
-        return self._request("POST", "/webhooks", json=_drop_none({"url": url, "events": events, "secret": secret}))
+    def create_webhook(
+        self, *, url: str, events: list[str], secret: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
+            "POST",
+            "/webhooks",
+            json=_drop_none({"url": url, "events": events, "secret": secret}),
+        )
 
     def list_webhooks(self) -> dict[str, Any]:
         return self._request("GET", "/webhooks")
@@ -333,18 +383,62 @@ class ApiClient:
             payload["priority"] = priority
         return self._request("POST", "/rules", json=payload)
 
-    def list_rules(self, *, limit: int | None = None, offset: int | None = None) -> dict[str, Any]:
-        return self._request("GET", "/rules", params=_drop_none({"limit": limit, "offset": offset}))
+    def list_rules(
+        self, *, limit: int | None = None, offset: int | None = None
+    ) -> dict[str, Any]:
+        return self._request(
+            "GET", "/rules", params=_drop_none({"limit": limit, "offset": offset})
+        )
 
     def delete_rule(self, rule_id: str) -> dict[str, Any]:
         self._request("DELETE", f"/rules/{_quote_path(rule_id)}")
         return {"status": "deleted", "rule_id": rule_id}
 
-    def get_usage(self, *, period: str | None = None, breakdown: str | None = None) -> dict[str, Any]:
-        return self._request("GET", "/usage", params=_drop_none({"period": period, "breakdown": breakdown}))
+    def update_rule(self, rule_id: str, changes: dict[str, Any]) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/rules/{_quote_path(rule_id)}",
+            json=_drop_none(changes),
+        )
 
-    def export_transactions(self, *, format: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self._request("POST", "/export", json=_drop_none({"format": format, "filters": filters}))
+    def get_categories(self) -> dict[str, Any]:
+        return self._request("GET", "/categories")
+
+    def create_category(self, name: str) -> dict[str, Any]:
+        return self._request("POST", "/categories", json={"name": name})
+
+    def delete_category(self, name: str) -> dict[str, Any]:
+        self._request("DELETE", f"/categories/{_quote_path(name)}")
+        return {"status": "deleted", "name": name}
+
+    def get_vendors(self) -> dict[str, Any]:
+        return self._request("GET", "/vendors")
+
+    def create_vendor(self, name: str) -> dict[str, Any]:
+        return self._request("POST", "/vendors", json={"name": name})
+
+    def delete_vendor(self, name: str) -> dict[str, Any]:
+        self._request("DELETE", f"/vendors/{_quote_path(name)}")
+        return {"status": "deleted", "name": name}
+
+    def get_usage(
+        self, *, period: str | None = None, breakdown: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            "/usage",
+            params=_drop_none({"period": period, "breakdown": breakdown}),
+        )
+
+    def export_transactions(
+        self, *, format: str, filters: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        result = self._request(
+            "POST", "/export", json=_drop_none({"format": format, "filters": filters})
+        )
+        if "content_type" not in result:
+            return {"content_type": "application/json", "body": json.dumps(result)}
+        return result
 
     def _build_scan_payload(
         self,
@@ -369,7 +463,9 @@ class ApiClient:
             raw_text is not None,
         ]
         if sum(provided_inputs) != 1:
-            raise ApiClientError("Provide exactly one of file_path, image_url, image_base64, or raw_text.")
+            raise ApiClientError(
+                "Provide exactly one of file_path, image_url, image_base64, or raw_text."
+            )
         if ephemeral and auto_save:
             raise ApiClientError("ephemeral and auto_save cannot both be true.")
         if auto_save and not project_id:
@@ -421,7 +517,9 @@ class ApiClient:
             image_base64 is not None,
         ]
         if sum(provided_inputs) != 1:
-            raise ApiClientError("Each batch item must provide exactly one of file_path, image_url, or image_base64.")
+            raise ApiClientError(
+                "Each batch item must provide exactly one of file_path, image_url, or image_base64."
+            )
 
         if file_path is not None:
             resolved = Path(file_path).expanduser()
@@ -456,26 +554,40 @@ class ApiClient:
         elif json is not None:
             request_headers["Content-Type"] = "application/json"
 
-        try:
-            response = self._dispatch_request(
-                method=method,
-                url=f"{self._settings.api_base_url}{path}",
-                headers=request_headers,
-                params=params,
-                json=json,
-                data=data,
-                timeout=self._settings.request_timeout_sec,
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise ApiClientError(f"Request failed: {exc}") from exc
+        last_exc: Exception | None = None
+        for attempt in range(_MAX_RETRIES):
+            try:
+                response = self._dispatch_request(
+                    method=method,
+                    url=f"{self._settings.api_base_url}{path}",
+                    headers=request_headers,
+                    params=params,
+                    json=json,
+                    data=data,
+                    timeout=self._settings.request_timeout_sec,
+                )
+                break
+            except _RETRYABLE_EXCEPTIONS as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES - 1:
+                    time.sleep(_RETRY_BACKOFF_BASE * (2**attempt))
+                continue
+            except Exception as exc:  # noqa: BLE001
+                raise ApiClientError(f"Request failed: {exc}") from exc
+        else:
+            raise ApiClientError(
+                f"Request failed after {_MAX_RETRIES} retries: {last_exc}"
+            ) from last_exc
 
         if response.status_code >= 400:
             raise ApiClientError(_extract_error_message(response))
 
         if response.status_code == 204:
             return {"status": "ok"}
-            
-        content_type = str(getattr(response, "headers", {}).get("Content-Type", "")).lower()
+
+        content_type = str(
+            getattr(response, "headers", {}).get("Content-Type", "")
+        ).lower()
         if not content_type or "json" in content_type:
             text = getattr(response, "text", "")
             if not text:
@@ -487,7 +599,11 @@ class ApiClient:
             if isinstance(payload, dict) and payload.get("success") is False:
                 raise ApiClientError(_extract_error_message_from_payload(payload))
 
-            if isinstance(payload, dict) and "data" in payload and payload.get("success") == True:
+            if (
+                isinstance(payload, dict)
+                and "data" in payload
+                and payload.get("success") == True
+            ):
                 return payload["data"]
 
             if isinstance(payload, dict):
@@ -506,7 +622,10 @@ class ApiClient:
         method_name = str(kwargs["method"]).lower()
         fallback = getattr(self._session, method_name, None)
         if callable(fallback):
-            return fallback(kwargs["url"], **{k: v for k, v in kwargs.items() if k not in ("method", "url")})
+            return fallback(
+                kwargs["url"],
+                **{k: v for k, v in kwargs.items() if k not in ("method", "url")},
+            )
         raise ApiClientError("Configured session does not support HTTP requests.")
 
 
@@ -514,7 +633,9 @@ def _drop_none(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def _pick_first(payload: dict[str, Any], *keys: str, default: object | None = None) -> object | None:
+def _pick_first(
+    payload: dict[str, Any], *keys: str, default: object | None = None
+) -> object | None:
     for key in keys:
         if key in payload and payload[key] not in (None, ""):
             return payload[key]

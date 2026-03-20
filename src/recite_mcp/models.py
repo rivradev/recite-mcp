@@ -32,6 +32,7 @@ class LedgerEntry:
     source_file: str
     ref_entry_id: str = ""
     correction_reason: str = ""
+    corrected_fields: str = ""
 
 
 @dataclass(slots=True)
@@ -48,6 +49,7 @@ class ProcessResult:
     ledger_entry: LedgerEntry | None = None
     receipt: ReceiptRecord | None = None
     renamed_to: str | None = None
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -55,6 +57,5 @@ class BatchProcessResult:
     status: str
     processed: int
     failed: int
-    preview_count: int
     items: list[dict]
-
+    preview_count: int | None = None

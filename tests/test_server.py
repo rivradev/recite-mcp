@@ -13,7 +13,9 @@ def test_create_server_registers_tools_and_resources(tmp_path, monkeypatch) -> N
 
     if hasattr(server, "list_tools") and hasattr(server, "list_resources"):
         tool_names = {tool.name for tool in asyncio.run(server.list_tools())}
-        resource_uris = {str(resource.uri) for resource in asyncio.run(server.list_resources())}
+        resource_uris = {
+            str(resource.uri) for resource in asyncio.run(server.list_resources())
+        }
     else:
         tool_names = set(server.tools.keys())
         resource_uris = set(server.resources.keys())
