@@ -334,3 +334,42 @@ def test_summary_by_vendor(tmp_path: Path) -> None:
 
     assert summary["Store"]["count"] == 2
     assert summary["Store"]["total"] == 50.0
+
+def test_summary_handles_missing_keys(tmp_path: Path) -> None:
+    repo = LedgerRepository(tmp_path / "ledger.csv")
+    repo.append_receipt(
+        ReceiptRecord(
+            vendor="",
+            date="2026-02-21",
+            total=20.0,
+            tax=2.0,
+            currency="USD",
+            category="Office",
+        ),
+        source_file="b.jpg",
+    )
+
+    summary = repo.summarize(group_by="vendor")
+
+    assert summary["unknown"]["count"] == 1
+    assert summary["unknown"]["total"] == 20.0
+
+def test_summarize_skips_non_receipts(tmp_path: Path) -> None:
+    repo = LedgerRepository(tmp_path / "ledger.csv")
+    entry = repo.append_receipt(
+        ReceiptRecord(
+            vendor="Store",
+            date="2026-02-21",
+            total=20.0,
+            tax=2.0,
+            currency="USD",
+            category="Office",
+        ),
+        source_file="b.jpg",
+    )
+    repo.add_correction(entry.entry_id, {"category": "Travel"}, reason="wrong category")
+
+    summary = repo.summarize(group_by="vendor")
+
+    assert summary["Store"]["count"] == 1
+    assert summary["Store"]["total"] == 20.0

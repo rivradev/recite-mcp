@@ -243,10 +243,8 @@ class ApiClient:
                 headers={"Content-Type": "text/csv"},
             )
 
-        if csv_file_path is None:
-            raise ApiClientError("csv_file_path is missing")
-
-        with open(Path(csv_file_path).expanduser(), "rb") as f:
+        # We know csv_file_path is not None because exactly one source was provided
+        with open(Path(str(csv_file_path)).expanduser(), "rb") as f:
             return self._request(
                 "POST",
                 "/import/transactions",

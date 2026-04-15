@@ -45,3 +45,25 @@ def test_memory_resource_reads_file(tmp_path: Path) -> None:
     provider = ResourceProvider(_settings(tmp_path))
 
     assert provider.get_memory_text() == "hello"
+
+def test_ledger_resource_reads_rows(tmp_path: Path) -> None:
+    provider = ResourceProvider(_settings(tmp_path))
+    from recite_mcp.models import ReceiptRecord
+    provider._ledger.append_receipt(
+        ReceiptRecord(
+            vendor="Store",
+            date="2026-02-21",
+            total=20.0,
+            tax=2.0,
+            currency="USD",
+            category="Office",
+        ),
+        source_file="b.jpg",
+    )
+    rows = provider.get_ledger_rows()
+    assert len(rows) == 1
+    assert rows[0]["vendor"] == "Store"
+
+def test_memory_resource_returns_empty_string_if_missing(tmp_path: Path) -> None:
+    provider = ResourceProvider(_settings(tmp_path))
+    assert provider.get_memory_text() == ""

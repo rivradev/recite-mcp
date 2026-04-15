@@ -640,3 +640,27 @@ def test_create_vendor_tool_returns_name(tmp_path: Path) -> None:
 def test_delete_vendor_tool_returns_deleted(tmp_path: Path) -> None:
     result = _tools(tmp_path).delete_vendor("Acme Corp")
     assert result == {"status": "deleted", "name": "Acme Corp"}
+
+def test_export_ledger_unsupported_format(tmp_path: Path) -> None:
+    tools = _tools(tmp_path)
+    import pytest
+    with pytest.raises(ValueError, match="Unsupported format: xml"):
+        tools.export_ledger(format="xml", output_path=str(tmp_path / "out.xml"))
+
+def test_rename_file_handles_null_vendor(tmp_path: Path) -> None:
+    path = tmp_path / "receipt.jpg"
+    path.write_text("")
+    new_name, new_path = ReciteTools._rename_file(path, "None", "2026-01-01", 10.0)
+    assert new_name == str(tmp_path / "2026-01-01_Unknown_10.00.jpg")
+
+def test_rename_file_handles_none_date(tmp_path: Path) -> None:
+    path = tmp_path / "receipt.jpg"
+    path.write_text("")
+    new_name, new_path = ReciteTools._rename_file(path, "Vendor", "None", 10.0)
+    assert new_name == str(tmp_path / "None_Vendor_10.00.jpg")
+
+def test_rename_file_handles_none_total(tmp_path: Path) -> None:
+    path = tmp_path / "receipt.jpg"
+    path.write_text("")
+    new_name, new_path = ReciteTools._rename_file(path, "Vendor", "2026-01-01", 0.0)
+    assert new_name == str(tmp_path / "2026-01-01_Vendor_0.00.jpg")

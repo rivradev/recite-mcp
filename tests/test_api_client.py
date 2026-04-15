@@ -1150,3 +1150,78 @@ def test_delete_vendor_url_encodes_special_chars(tmp_path: Path) -> None:
 
     assert session.last_url is not None
     assert "Caf%C3%A9%20%26%20Bistro" in session.last_url
+
+def test_api_client_list_rules_without_params(tmp_path: Path) -> None:
+    session = _Session(_Response(200, {"success": True, "data": []}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.list_rules()
+    assert result == []
+
+def test_api_client_request_handles_none_data(tmp_path: Path) -> None:
+    # payload is a list (not dict), so it falls through to 'return {"data": payload}'
+    session = _Session(_Response(200, [{"a": "b"}]))
+    client = ApiClient(_settings(tmp_path), session=session)
+    result = client.list_rules()
+    assert result == {"data": [{"a": "b"}]}
+
+def test_api_client_request_handles_dict_without_data(tmp_path: Path) -> None:
+    session = _Session(_Response(200, {"success": True, "something": "else"}))
+    client = ApiClient(_settings(tmp_path), session=session)
+    result = client.list_rules()
+    assert result == {"success": True, "something": "else"}
+
+def test_api_client_dispatch_request_unsupported_session(tmp_path: Path) -> None:
+    class UnsupportedSession:
+        pass
+    client = ApiClient(_settings(tmp_path), session=UnsupportedSession())
+    with pytest.raises(ApiClientError, match="Configured session does not support HTTP requests"):
+        client.list_rules()
+
+def test_api_client_dispatch_request_fallback_method(tmp_path: Path) -> None:
+    class FallbackSession:
+        def get(self, url, **kwargs):
+            return _Response(200, {"success": True, "data": []})
+
+    client = ApiClient(_settings(tmp_path), session=FallbackSession())
+    result = client.list_rules()
+    assert result == []
+
+def test_api_client_extract_error_message_non_json(tmp_path: Path) -> None:
+    class BadJson:
+        status_code = 500
+        text = "Internal Server Error Text"
+        def json(self):
+            raise Exception("no json")
+
+    from recite_mcp.api_client import _extract_error_message
+    assert _extract_error_message(BadJson()) == "Recite API error (500): Internal Server Error Text"
+
+def test_api_client_extract_error_message_non_json_empty_text(tmp_path: Path) -> None:
+    class BadJsonEmpty:
+        status_code = 502
+        text = ""
+        def json(self):
+            raise Exception("no json")
+
+    from recite_mcp.api_client import _extract_error_message
+    assert _extract_error_message(BadJsonEmpty()) == "Recite API error: 502"
+
+def test_api_client_extract_error_message_generic_payload(tmp_path: Path) -> None:
+    class JsonListResponse:
+        status_code = 404
+        def json(self):
+            return ["not", "a", "dict"]
+
+    from recite_mcp.api_client import _extract_error_message
+    assert _extract_error_message(JsonListResponse()) == "Recite API error: 404"
+
+def test_api_client_extract_error_message_from_payload_string(tmp_path: Path) -> None:
+    from recite_mcp.api_client import _extract_error_message_from_payload
+    payload = {"error": "A string error message"}
+    assert _extract_error_message_from_payload(payload) == "A string error message"
+
+def test_api_client_extract_error_message_from_payload_fallback(tmp_path: Path) -> None:
+    from recite_mcp.api_client import _extract_error_message_from_payload
+    payload = {}
+    assert _extract_error_message_from_payload(payload) == "Unknown API error"
