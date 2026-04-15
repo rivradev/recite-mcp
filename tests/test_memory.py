@@ -45,3 +45,12 @@ def test_different_instructions_not_deduped(tmp_path) -> None:  # noqa: ANN001
     rows = repo.list_instructions()
 
     assert len(rows) == 2
+
+def test_list_instructions_handles_empty_lines(tmp_path) -> None:
+    repo = MemoryRepository(tmp_path / "memory.md")
+    repo.add_instruction("Do X")
+    with repo.path.open("a", encoding="utf-8") as f:
+        f.write("\n   \n")
+
+    rows = repo.list_instructions()
+    assert len(rows) == 1
