@@ -438,6 +438,243 @@ class ApiClient:
             return {"content_type": "application/json", "body": json.dumps(result)}
         return result
 
+    def upload_bank_statement(
+        self,
+        *,
+        csv_file_path: str | Path | None = None,
+        csv_text: str | None = None,
+        account_name: str | None = None,
+        statement_date: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        provided = [csv_file_path is not None, csv_text is not None]
+        if sum(provided) != 1:
+            raise ApiClientError("Provide exactly one of csv_file_path or csv_text.")
+
+        params = _drop_none(
+            {
+                "account_name": account_name,
+                "statement_date": statement_date,
+                "source": source,
+                "metadata": json.dumps(metadata) if metadata is not None else None,
+            }
+        )
+
+        if csv_text is not None:
+            return self._request(
+                "POST",
+                "/bank-statements",
+                params=params,
+                data=csv_text,
+                headers={"Content-Type": "text/csv"},
+            )
+
+        with open(Path(str(csv_file_path)).expanduser(), "rb") as f:
+            return self._request(
+                "POST",
+                "/bank-statements",
+                params=params,
+                data=f,
+                headers={"Content-Type": "text/csv"},
+            )
+
+    def list_bank_statements(
+        self,
+        *,
+        account_name: str | None = None,
+        status: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        params = _drop_none(
+            {
+                "account_name": account_name,
+                "status": status,
+                "start_date": start_date,
+                "end_date": end_date,
+                "limit": limit,
+                "offset": offset,
+                "format": format,
+            }
+        )
+        return self._request("GET", "/bank-statements", params=params)
+
+    def get_bank_statement(self, statement_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/bank-statements/{_quote_path(statement_id)}")
+
+    def delete_bank_statement(self, statement_id: str) -> dict[str, Any]:
+        self._request("DELETE", f"/bank-statements/{_quote_path(statement_id)}")
+        return {"status": "deleted", "statement_id": statement_id}
+
+    def export_bank_statement(
+        self, statement_id: str, *, format: str | None = None
+    ) -> dict[str, Any]:
+        result = self._request(
+            "GET",
+            f"/bank-statements/{_quote_path(statement_id)}/export",
+            params=_drop_none({"format": format}),
+        )
+        if "content_type" not in result:
+            return {"content_type": "application/json", "body": json.dumps(result)}
+        return result
+
+    def list_bank_transactions(
+        self,
+        *,
+        statement_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        amount_min: float | int | None = None,
+        amount_max: float | int | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        params = _drop_none(
+            {
+                "statement_id": statement_id,
+                "start_date": start_date,
+                "end_date": end_date,
+                "amount_min": amount_min,
+                "amount_max": amount_max,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+                "format": format,
+            }
+        )
+        return self._request("GET", "/bank-transactions", params=params)
+
+    def get_bank_transaction(self, bank_transaction_id: str) -> dict[str, Any]:
+        return self._request(
+            "GET", f"/bank-transactions/{_quote_path(bank_transaction_id)}"
+        )
+
+    def update_bank_transaction(
+        self, bank_transaction_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/bank-transactions/{_quote_path(bank_transaction_id)}",
+            json=_drop_none(changes),
+        )
+
+    def delete_bank_transaction(self, bank_transaction_id: str) -> dict[str, Any]:
+        self._request(
+            "DELETE", f"/bank-transactions/{_quote_path(bank_transaction_id)}"
+        )
+        return {"status": "deleted", "bank_transaction_id": bank_transaction_id}
+
+    def create_reconciliation_link(
+        self,
+        *,
+        transaction_id: str,
+        bank_transaction_id: str,
+        link_type: str | None = None,
+        notes: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "transaction_id": transaction_id,
+            "bank_transaction_id": bank_transaction_id,
+        }
+        payload.update(
+            _drop_none(
+                {
+                    "link_type": link_type,
+                    "notes": notes,
+                    "metadata": metadata,
+                }
+            )
+        )
+        return self._request("POST", "/reconciliation/links", json=payload)
+
+    def list_reconciliation_links(
+        self,
+        *,
+        statement_id: str | None = None,
+        transaction_id: str | None = None,
+        bank_transaction_id: str | None = None,
+        link_type: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        params = _drop_none(
+            {
+                "statement_id": statement_id,
+                "transaction_id": transaction_id,
+                "bank_transaction_id": bank_transaction_id,
+                "link_type": link_type,
+                "status": status,
+                "limit": limit,
+                "offset": offset,
+                "format": format,
+            }
+        )
+        return self._request("GET", "/reconciliation/links", params=params)
+
+    def update_reconciliation_link(
+        self, link_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._request(
+            "PATCH",
+            f"/reconciliation/links/{_quote_path(link_id)}",
+            json=_drop_none(changes),
+        )
+
+    def delete_reconciliation_link(self, link_id: str) -> dict[str, Any]:
+        self._request("DELETE", f"/reconciliation/links/{_quote_path(link_id)}")
+        return {"status": "deleted", "link_id": link_id}
+
+    def run_auto_match(
+        self,
+        *,
+        statement_id: str | None = None,
+        strategy: str | None = None,
+        min_confidence: float | None = None,
+        dry_run: bool | None = None,
+    ) -> dict[str, Any]:
+        payload = _drop_none(
+            {
+                "statement_id": statement_id,
+                "strategy": strategy,
+                "min_confidence": min_confidence,
+                "dry_run": dry_run,
+            }
+        )
+        return self._request("POST", "/reconciliation/auto-match", json=payload)
+
+    def get_reconciliation_summary(
+        self, *, statement_id: str | None = None
+    ) -> dict[str, Any]:
+        return self._request(
+            "GET",
+            "/reconciliation/summary",
+            params=_drop_none({"statement_id": statement_id}),
+        )
+
+    def export_reconciliation(
+        self,
+        *,
+        format: str | None = None,
+        statement_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self._request(
+            "GET",
+            "/reconciliation/export",
+            params=_drop_none({"format": format, "statement_id": statement_id}),
+        )
+        if "content_type" not in result:
+            return {"content_type": "application/json", "body": json.dumps(result)}
+        return result
+
     def _build_scan_payload(
         self,
         *,
