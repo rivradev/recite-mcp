@@ -334,6 +334,188 @@ class ReciteTools:
             return {"status": "ok", "path": str(path), "format": format}
         return result["body"]
 
+    def upload_bank_statement(
+        self,
+        *,
+        csv_file_path: str | None = None,
+        csv_text: str | None = None,
+        account_name: str | None = None,
+        statement_date: str | None = None,
+        source: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.upload_bank_statement(
+            csv_file_path=csv_file_path,
+            csv_text=csv_text,
+            account_name=account_name,
+            statement_date=statement_date,
+            source=source,
+            metadata=metadata,
+        )
+
+    def list_bank_statements(
+        self,
+        *,
+        account_name: str | None = None,
+        status: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.list_bank_statements(
+            account_name=account_name,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    def get_bank_statement(self, statement_id: str) -> dict[str, Any]:
+        return self._api_client.get_bank_statement(statement_id)
+
+    def delete_bank_statement(self, statement_id: str) -> dict[str, Any]:
+        return self._api_client.delete_bank_statement(statement_id)
+
+    def export_bank_statement(
+        self,
+        statement_id: str,
+        *,
+        format: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any] | str:
+        result = self._api_client.export_bank_statement(statement_id, format=format)
+        if output_path is not None:
+            path = Path(output_path).expanduser().resolve()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(result["body"], encoding="utf-8")
+            return {"status": "ok", "path": str(path), "format": format}
+        return result["body"]
+
+    def list_bank_transactions(
+        self,
+        *,
+        statement_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        amount_min: float | int | None = None,
+        amount_max: float | int | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.list_bank_transactions(
+            statement_id=statement_id,
+            start_date=start_date,
+            end_date=end_date,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            status=status,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    def get_bank_transaction(self, bank_transaction_id: str) -> dict[str, Any]:
+        return self._api_client.get_bank_transaction(bank_transaction_id)
+
+    def update_bank_transaction(
+        self, bank_transaction_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._api_client.update_bank_transaction(bank_transaction_id, changes)
+
+    def delete_bank_transaction(self, bank_transaction_id: str) -> dict[str, Any]:
+        return self._api_client.delete_bank_transaction(bank_transaction_id)
+
+    def create_reconciliation_link(
+        self,
+        *,
+        transaction_id: str,
+        bank_transaction_id: str,
+        link_type: str | None = None,
+        notes: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.create_reconciliation_link(
+            transaction_id=transaction_id,
+            bank_transaction_id=bank_transaction_id,
+            link_type=link_type,
+            notes=notes,
+            metadata=metadata,
+        )
+
+    def list_reconciliation_links(
+        self,
+        *,
+        statement_id: str | None = None,
+        transaction_id: str | None = None,
+        bank_transaction_id: str | None = None,
+        link_type: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.list_reconciliation_links(
+            statement_id=statement_id,
+            transaction_id=transaction_id,
+            bank_transaction_id=bank_transaction_id,
+            link_type=link_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    def update_reconciliation_link(
+        self, link_id: str, changes: dict[str, Any]
+    ) -> dict[str, Any]:
+        return self._api_client.update_reconciliation_link(link_id, changes)
+
+    def delete_reconciliation_link(self, link_id: str) -> dict[str, Any]:
+        return self._api_client.delete_reconciliation_link(link_id)
+
+    def run_auto_match(
+        self,
+        *,
+        statement_id: str | None = None,
+        strategy: str | None = None,
+        min_confidence: float | None = None,
+        dry_run: bool | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.run_auto_match(
+            statement_id=statement_id,
+            strategy=strategy,
+            min_confidence=min_confidence,
+            dry_run=dry_run,
+        )
+
+    def get_reconciliation_summary(
+        self, *, statement_id: str | None = None
+    ) -> dict[str, Any]:
+        return self._api_client.get_reconciliation_summary(statement_id=statement_id)
+
+    def export_reconciliation(
+        self,
+        *,
+        format: str | None = None,
+        statement_id: str | None = None,
+        output_path: str | None = None,
+    ) -> dict[str, Any] | str:
+        result = self._api_client.export_reconciliation(
+            format=format, statement_id=statement_id
+        )
+        if output_path is not None:
+            path = Path(output_path).expanduser().resolve()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(result["body"], encoding="utf-8")
+            return {"status": "ok", "path": str(path), "format": format}
+        return result["body"]
+
     def process_receipts_batch(
         self,
         input_dir: str,

@@ -105,7 +105,12 @@ class _Client:
         return {"data": kwargs}
 
     def export_transactions(self, *, format: str, filters: dict | None = None) -> dict:
-        return {"content_type": "text/csv", "body": f"header\nrow1\nrow2", "format": format, "filters": filters}
+        return {
+            "content_type": "text/csv",
+            "body": f"header\nrow1\nrow2",
+            "format": format,
+            "filters": filters,
+        }
 
     def update_rule(self, rule_id: str, changes: dict) -> dict:
         return {"rule_id": rule_id, **changes}
@@ -131,6 +136,71 @@ class _Client:
 
     def delete_vendor(self, name: str) -> dict:
         return {"status": "deleted", "name": name}
+
+    def upload_bank_statement(self, **kwargs: Any) -> dict:
+        return {
+            "statement_id": "stmt_new",
+            "status": "uploaded",
+            **{
+                k: v
+                for k, v in kwargs.items()
+                if k not in ("csv_text", "csv_file_path")
+            },
+        }
+
+    def list_bank_statements(self, **kwargs: Any) -> dict:
+        return {"data": kwargs}
+
+    def get_bank_statement(self, statement_id: str) -> dict:
+        return {"statement_id": statement_id}
+
+    def delete_bank_statement(self, statement_id: str) -> dict:
+        return {"status": "deleted", "statement_id": statement_id}
+
+    def export_bank_statement(self, statement_id: str, **kwargs: Any) -> dict:
+        return {
+            "content_type": "text/csv",
+            "body": "date,description,amount\n",
+            "statement_id": statement_id,
+            **kwargs,
+        }
+
+    def list_bank_transactions(self, **kwargs: Any) -> dict:
+        return {"data": kwargs}
+
+    def get_bank_transaction(self, bank_transaction_id: str) -> dict:
+        return {"bank_transaction_id": bank_transaction_id}
+
+    def update_bank_transaction(self, bank_transaction_id: str, changes: dict) -> dict:
+        return {"bank_transaction_id": bank_transaction_id, **changes}
+
+    def delete_bank_transaction(self, bank_transaction_id: str) -> dict:
+        return {"status": "deleted", "bank_transaction_id": bank_transaction_id}
+
+    def create_reconciliation_link(self, **kwargs: Any) -> dict:
+        return {"link_id": "link_new", **kwargs}
+
+    def list_reconciliation_links(self, **kwargs: Any) -> dict:
+        return {"data": kwargs}
+
+    def update_reconciliation_link(self, link_id: str, changes: dict) -> dict:
+        return {"link_id": link_id, **changes}
+
+    def delete_reconciliation_link(self, link_id: str) -> dict:
+        return {"status": "deleted", "link_id": link_id}
+
+    def run_auto_match(self, **kwargs: Any) -> dict:
+        return {"matches_found": 3, "status": "completed", **kwargs}
+
+    def get_reconciliation_summary(self, **kwargs: Any) -> dict:
+        return {"matched": 10, "unmatched": 2, **kwargs}
+
+    def export_reconciliation(self, **kwargs: Any) -> dict:
+        return {
+            "content_type": "text/csv",
+            "body": "link_id,transaction_id\n",
+            **kwargs,
+        }
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -213,6 +283,7 @@ def test_rename_file_target_already_exists_raises(tmp_path: Path) -> None:
     (tmp_path / "2026-01-01_Bakery_8.00.jpg").write_bytes(b"old content")
 
     import pytest
+
     with pytest.raises(FileExistsError, match="2026-01-01_Bakery_8.00.jpg"):
         ReciteTools._rename_file(image, "Bakery", "2026-01-01", 8.00)
 
@@ -263,6 +334,7 @@ def test_process_receipt_dry_run_does_not_write_ledger(tmp_path: Path) -> None:
     assert result.ledger_entry is None
     # Ledger file should not exist (no write occurred)
     from recite_mcp.config import Settings
+
     s = _settings(tmp_path)
     assert not s.ledger_path.exists()
 
@@ -283,6 +355,7 @@ def test_export_ledger_csv(tmp_path: Path) -> None:
 
 def test_export_ledger_json(tmp_path: Path) -> None:
     import json as json_mod
+
     image = tmp_path / "receipt.jpg"
     image.write_bytes(b"fake")
     tools = ReciteTools.from_settings(_settings(tmp_path), api_client=_Client())
@@ -300,6 +373,7 @@ def test_export_ledger_json(tmp_path: Path) -> None:
 def test_export_ledger_unsupported_format_raises(tmp_path: Path) -> None:
     tools = _tools(tmp_path)
     import pytest
+
     with pytest.raises(ValueError, match="Unsupported format"):
         tools.export_ledger("xml", str(tmp_path / "out.xml"))
 
@@ -574,7 +648,9 @@ def test_export_transactions_tool_forwards_format_and_filters(tmp_path: Path) ->
     assert "header" in result
 
 
-def test_export_transactions_writes_to_disk_when_output_path_given(tmp_path: Path) -> None:
+def test_export_transactions_writes_to_disk_when_output_path_given(
+    tmp_path: Path,
+) -> None:
     out = tmp_path / "out.csv"
     result = _tools(tmp_path).export_transactions(format="csv", output_path=str(out))
     assert result["status"] == "ok"
@@ -641,11 +717,14 @@ def test_delete_vendor_tool_returns_deleted(tmp_path: Path) -> None:
     result = _tools(tmp_path).delete_vendor("Acme Corp")
     assert result == {"status": "deleted", "name": "Acme Corp"}
 
+
 def test_export_ledger_unsupported_format(tmp_path: Path) -> None:
     tools = _tools(tmp_path)
     import pytest
+
     with pytest.raises(ValueError, match="Unsupported format: xml"):
         tools.export_ledger(format="xml", output_path=str(tmp_path / "out.xml"))
+
 
 def test_rename_file_handles_null_vendor(tmp_path: Path) -> None:
     path = tmp_path / "receipt.jpg"
@@ -653,14 +732,163 @@ def test_rename_file_handles_null_vendor(tmp_path: Path) -> None:
     new_name, new_path = ReciteTools._rename_file(path, "None", "2026-01-01", 10.0)
     assert new_name == str(tmp_path / "2026-01-01_Unknown_10.00.jpg")
 
+
 def test_rename_file_handles_none_date(tmp_path: Path) -> None:
     path = tmp_path / "receipt.jpg"
     path.write_text("")
     new_name, new_path = ReciteTools._rename_file(path, "Vendor", "None", 10.0)
     assert new_name == str(tmp_path / "None_Vendor_10.00.jpg")
 
+
 def test_rename_file_handles_none_total(tmp_path: Path) -> None:
     path = tmp_path / "receipt.jpg"
     path.write_text("")
     new_name, new_path = ReciteTools._rename_file(path, "Vendor", "2026-01-01", 0.0)
     assert new_name == str(tmp_path / "2026-01-01_Vendor_0.00.jpg")
+
+
+# ---------------------------------------------------------------------------
+# bank statements
+# ---------------------------------------------------------------------------
+
+
+def test_upload_bank_statement_tool_forwards_csv_text(tmp_path: Path) -> None:
+    result = _tools(tmp_path).upload_bank_statement(
+        csv_text="date,description,amount\n2026-01-15,Deposit,1000.00",
+        account_name="Checking",
+    )
+    assert result["statement_id"] == "stmt_new"
+    assert result["account_name"] == "Checking"
+
+
+def test_upload_bank_statement_tool_forwards_csv_file(tmp_path: Path) -> None:
+    csv_file = tmp_path / "stmt.csv"
+    csv_file.write_text("date,description,amount\n2026-01-15,Deposit,500.00")
+    result = _tools(tmp_path).upload_bank_statement(
+        csv_file_path=str(csv_file), account_name="Savings"
+    )
+    assert result["statement_id"] == "stmt_new"
+
+
+def test_list_bank_statements_tool_forwards_params(tmp_path: Path) -> None:
+    result = _tools(tmp_path).list_bank_statements(
+        account_name="Checking", status="processed", limit=10
+    )
+    assert result["data"]["account_name"] == "Checking"
+    assert result["data"]["limit"] == 10
+
+
+def test_get_bank_statement_tool_returns_statement(tmp_path: Path) -> None:
+    result = _tools(tmp_path).get_bank_statement("stmt_abc")
+    assert result["statement_id"] == "stmt_abc"
+
+
+def test_delete_bank_statement_tool_returns_deleted(tmp_path: Path) -> None:
+    result = _tools(tmp_path).delete_bank_statement("stmt_123")
+    assert result == {"status": "deleted", "statement_id": "stmt_123"}
+
+
+def test_export_bank_statement_tool_forwards_format(tmp_path: Path) -> None:
+    result = _tools(tmp_path).export_bank_statement("stmt_abc", format="csv")
+    assert isinstance(result, str)
+    assert "date,description" in result
+
+
+def test_export_bank_statement_writes_to_disk(tmp_path: Path) -> None:
+    out = tmp_path / "stmt.csv"
+    result = _tools(tmp_path).export_bank_statement(
+        "stmt_abc", format="csv", output_path=str(out)
+    )
+    assert result["status"] == "ok"
+    assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# bank transactions
+# ---------------------------------------------------------------------------
+
+
+def test_list_bank_transactions_tool_forwards_params(tmp_path: Path) -> None:
+    result = _tools(tmp_path).list_bank_transactions(
+        statement_id="stmt_1", start_date="2026-01-01", limit=20
+    )
+    assert result["data"]["statement_id"] == "stmt_1"
+    assert result["data"]["limit"] == 20
+
+
+def test_get_bank_transaction_tool_returns_transaction(tmp_path: Path) -> None:
+    result = _tools(tmp_path).get_bank_transaction("btxn_abc")
+    assert result["bank_transaction_id"] == "btxn_abc"
+
+
+def test_update_bank_transaction_tool_forwards_changes(tmp_path: Path) -> None:
+    result = _tools(tmp_path).update_bank_transaction("btxn_abc", {"status": "matched"})
+    assert result["bank_transaction_id"] == "btxn_abc"
+    assert result["status"] == "matched"
+
+
+def test_delete_bank_transaction_tool_returns_deleted(tmp_path: Path) -> None:
+    result = _tools(tmp_path).delete_bank_transaction("btxn_123")
+    assert result == {"status": "deleted", "bank_transaction_id": "btxn_123"}
+
+
+# ---------------------------------------------------------------------------
+# reconciliation
+# ---------------------------------------------------------------------------
+
+
+def test_create_reconciliation_link_tool_forwards_payload(tmp_path: Path) -> None:
+    result = _tools(tmp_path).create_reconciliation_link(
+        transaction_id="txn_1",
+        bank_transaction_id="btxn_1",
+        link_type="manual",
+    )
+    assert result["link_id"] == "link_new"
+    assert result["transaction_id"] == "txn_1"
+
+
+def test_list_reconciliation_links_tool_forwards_params(tmp_path: Path) -> None:
+    result = _tools(tmp_path).list_reconciliation_links(
+        statement_id="stmt_1", link_type="auto", limit=25
+    )
+    assert result["data"]["statement_id"] == "stmt_1"
+    assert result["data"]["limit"] == 25
+
+
+def test_update_reconciliation_link_tool_forwards_changes(tmp_path: Path) -> None:
+    result = _tools(tmp_path).update_reconciliation_link("link_1", {"status": "broken"})
+    assert result["link_id"] == "link_1"
+    assert result["status"] == "broken"
+
+
+def test_delete_reconciliation_link_tool_returns_deleted(tmp_path: Path) -> None:
+    result = _tools(tmp_path).delete_reconciliation_link("link_123")
+    assert result == {"status": "deleted", "link_id": "link_123"}
+
+
+def test_run_auto_match_tool_forwards_params(tmp_path: Path) -> None:
+    result = _tools(tmp_path).run_auto_match(
+        statement_id="stmt_1", strategy="fuzzy", min_confidence=0.8
+    )
+    assert result["matches_found"] == 3
+    assert result["statement_id"] == "stmt_1"
+
+
+def test_get_reconciliation_summary_tool_forwards_params(tmp_path: Path) -> None:
+    result = _tools(tmp_path).get_reconciliation_summary(statement_id="stmt_1")
+    assert result["matched"] == 10
+
+
+def test_export_reconciliation_tool_forwards_format(tmp_path: Path) -> None:
+    result = _tools(tmp_path).export_reconciliation(format="csv", statement_id="stmt_1")
+    assert isinstance(result, str)
+    assert "link_id" in result
+
+
+def test_export_reconciliation_writes_to_disk(tmp_path: Path) -> None:
+    out = tmp_path / "recon.csv"
+    result = _tools(tmp_path).export_reconciliation(
+        format="csv", statement_id="stmt_1", output_path=str(out)
+    )
+    assert result["status"] == "ok"
+    assert out.exists()

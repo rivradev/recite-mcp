@@ -176,10 +176,14 @@ def test_process_receipt_raises_when_file_missing(tmp_path: Path) -> None:
 def test_process_receipt_null_vendor_stored_as_empty_string(tmp_path: Path) -> None:
     image = tmp_path / "receipt.jpg"
     image.write_bytes(b"fake")
-    payload = _ok({"extracted_data": {"amount": 10.0, "date": "2026-01-01", "currency": "USD"}})
+    payload = _ok(
+        {"extracted_data": {"amount": 10.0, "date": "2026-01-01", "currency": "USD"}}
+    )
     client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, payload)))
     record = client.process_receipt(image)
-    assert record.vendor == "", "null vendor must become empty string, not the string 'None'"
+    assert record.vendor == "", (
+        "null vendor must become empty string, not the string 'None'"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1151,12 +1155,14 @@ def test_delete_vendor_url_encodes_special_chars(tmp_path: Path) -> None:
     assert session.last_url is not None
     assert "Caf%C3%A9%20%26%20Bistro" in session.last_url
 
+
 def test_api_client_list_rules_without_params(tmp_path: Path) -> None:
     session = _Session(_Response(200, {"success": True, "data": []}))
     client = ApiClient(_settings(tmp_path), session=session)
 
     result = client.list_rules()
     assert result == []
+
 
 def test_api_client_request_handles_none_data(tmp_path: Path) -> None:
     # payload is a list (not dict), so it falls through to 'return {"data": payload}'
@@ -1165,18 +1171,24 @@ def test_api_client_request_handles_none_data(tmp_path: Path) -> None:
     result = client.list_rules()
     assert result == {"data": [{"a": "b"}]}
 
+
 def test_api_client_request_handles_dict_without_data(tmp_path: Path) -> None:
     session = _Session(_Response(200, {"success": True, "something": "else"}))
     client = ApiClient(_settings(tmp_path), session=session)
     result = client.list_rules()
     assert result == {"success": True, "something": "else"}
 
+
 def test_api_client_dispatch_request_unsupported_session(tmp_path: Path) -> None:
     class UnsupportedSession:
         pass
+
     client = ApiClient(_settings(tmp_path), session=UnsupportedSession())
-    with pytest.raises(ApiClientError, match="Configured session does not support HTTP requests"):
+    with pytest.raises(
+        ApiClientError, match="Configured session does not support HTTP requests"
+    ):
         client.list_rules()
+
 
 def test_api_client_dispatch_request_fallback_method(tmp_path: Path) -> None:
     class FallbackSession:
@@ -1187,41 +1199,371 @@ def test_api_client_dispatch_request_fallback_method(tmp_path: Path) -> None:
     result = client.list_rules()
     assert result == []
 
+
 def test_api_client_extract_error_message_non_json(tmp_path: Path) -> None:
     class BadJson:
         status_code = 500
         text = "Internal Server Error Text"
+
         def json(self):
             raise Exception("no json")
 
     from recite_mcp.api_client import _extract_error_message
-    assert _extract_error_message(BadJson()) == "Recite API error (500): Internal Server Error Text"
+
+    assert (
+        _extract_error_message(BadJson())
+        == "Recite API error (500): Internal Server Error Text"
+    )
+
 
 def test_api_client_extract_error_message_non_json_empty_text(tmp_path: Path) -> None:
     class BadJsonEmpty:
         status_code = 502
         text = ""
+
         def json(self):
             raise Exception("no json")
 
     from recite_mcp.api_client import _extract_error_message
+
     assert _extract_error_message(BadJsonEmpty()) == "Recite API error: 502"
+
 
 def test_api_client_extract_error_message_generic_payload(tmp_path: Path) -> None:
     class JsonListResponse:
         status_code = 404
+
         def json(self):
             return ["not", "a", "dict"]
 
     from recite_mcp.api_client import _extract_error_message
+
     assert _extract_error_message(JsonListResponse()) == "Recite API error: 404"
+
 
 def test_api_client_extract_error_message_from_payload_string(tmp_path: Path) -> None:
     from recite_mcp.api_client import _extract_error_message_from_payload
+
     payload = {"error": "A string error message"}
     assert _extract_error_message_from_payload(payload) == "A string error message"
 
+
 def test_api_client_extract_error_message_from_payload_fallback(tmp_path: Path) -> None:
     from recite_mcp.api_client import _extract_error_message_from_payload
+
     payload = {}
     assert _extract_error_message_from_payload(payload) == "Unknown API error"
+
+
+# ---------------------------------------------------------------------------
+# bank statements
+# ---------------------------------------------------------------------------
+
+
+def test_upload_bank_statement_sends_csv_text(tmp_path: Path) -> None:
+    session = _Session(
+        _Response(200, _ok({"statement_id": "stmt_1", "status": "uploaded"}))
+    )
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.upload_bank_statement(
+        csv_text="date,description,amount\n2026-01-15,Deposit,1000.00",
+        account_name="Checking",
+        statement_date="2026-01-15",
+    )
+
+    assert result["statement_id"] == "stmt_1"
+    assert session.last_method == "POST"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-statements")
+    assert session.last_kwargs["headers"]["Content-Type"] == "text/csv"
+    assert session.last_kwargs["data"].startswith("date,description")
+    assert session.last_kwargs["params"]["account_name"] == "Checking"
+    assert session.last_kwargs["params"]["statement_date"] == "2026-01-15"
+
+
+def test_upload_bank_statement_sends_csv_file(tmp_path: Path) -> None:
+    csv_file = tmp_path / "stmt.csv"
+    csv_file.write_text("date,description,amount\n2026-01-15,Deposit,500.00")
+    session = _Session(
+        _Response(200, _ok({"statement_id": "stmt_2", "status": "uploaded"}))
+    )
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.upload_bank_statement(
+        csv_file_path=csv_file, account_name="Savings"
+    )
+
+    assert result["statement_id"] == "stmt_2"
+    assert session.last_method == "POST"
+    assert session.last_kwargs["headers"]["Content-Type"] == "text/csv"
+    assert hasattr(session.last_kwargs["data"], "read")
+    assert session.last_kwargs["params"]["account_name"] == "Savings"
+
+
+def test_upload_bank_statement_rejects_both_sources(tmp_path: Path) -> None:
+    client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, _ok({}))))
+
+    with pytest.raises(ApiClientError, match="exactly one"):
+        client.upload_bank_statement(
+            csv_text="date,amount",
+            csv_file_path="/some/file.csv",
+        )
+
+
+def test_upload_bank_statement_rejects_zero_sources(tmp_path: Path) -> None:
+    client = ApiClient(_settings(tmp_path), session=_Session(_Response(200, _ok({}))))
+
+    with pytest.raises(ApiClientError, match="exactly one"):
+        client.upload_bank_statement(account_name="Checking")
+
+
+def test_list_bank_statements_passes_filter_params(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"statements": [], "pagination": {}})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.list_bank_statements(
+        account_name="Checking", status="processed", limit=10, offset=5
+    )
+
+    assert session.last_method == "GET"
+    assert session.last_kwargs["params"] == {
+        "account_name": "Checking",
+        "status": "processed",
+        "limit": 10,
+        "offset": 5,
+    }
+
+
+def test_get_bank_statement_sends_correct_url(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"statement_id": "stmt_abc"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.get_bank_statement("stmt_abc")
+
+    assert result["statement_id"] == "stmt_abc"
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-statements/stmt_abc")
+
+
+def test_delete_bank_statement_returns_status_deleted(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.delete_bank_statement("stmt_123")
+
+    assert result == {"status": "deleted", "statement_id": "stmt_123"}
+    assert session.last_method == "DELETE"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-statements/stmt_123")
+
+
+def test_export_bank_statement_sends_correct_url(tmp_path: Path) -> None:
+    session = _Session(
+        _Response(
+            200,
+            None,
+            text="date,description,amount\n2026-01-15,Deposit,1000.00\n",
+            headers={"Content-Type": "text/csv"},
+        )
+    )
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.export_bank_statement("stmt_abc", format="csv")
+
+    assert result == {
+        "content_type": "text/csv",
+        "body": "date,description,amount\n2026-01-15,Deposit,1000.00\n",
+    }
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-statements/stmt_abc/export")
+    assert session.last_kwargs["params"] == {"format": "csv"}
+
+
+# ---------------------------------------------------------------------------
+# bank transactions
+# ---------------------------------------------------------------------------
+
+
+def test_list_bank_transactions_passes_filter_params(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"transactions": [], "pagination": {}})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.list_bank_transactions(
+        statement_id="stmt_1", start_date="2026-01-01", amount_min=10, limit=20
+    )
+
+    assert session.last_method == "GET"
+    assert session.last_kwargs["params"] == {
+        "statement_id": "stmt_1",
+        "start_date": "2026-01-01",
+        "amount_min": 10,
+        "limit": 20,
+    }
+
+
+def test_get_bank_transaction_sends_correct_url(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"bank_transaction_id": "btxn_abc"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.get_bank_transaction("btxn_abc")
+
+    assert result["bank_transaction_id"] == "btxn_abc"
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-transactions/btxn_abc")
+
+
+def test_update_bank_transaction_sends_patch_dropping_none(tmp_path: Path) -> None:
+    session = _Session(
+        _Response(200, _ok({"bank_transaction_id": "btxn_abc", "status": "matched"}))
+    )
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.update_bank_transaction(
+        "btxn_abc", {"status": "matched", "notes": None}
+    )
+
+    assert result["status"] == "matched"
+    assert session.last_method == "PATCH"
+    assert "notes" not in session.last_kwargs["json"]
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-transactions/btxn_abc")
+
+
+def test_delete_bank_transaction_returns_status_deleted(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.delete_bank_transaction("btxn_123")
+
+    assert result == {"status": "deleted", "bank_transaction_id": "btxn_123"}
+    assert session.last_method == "DELETE"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/bank-transactions/btxn_123")
+
+
+# ---------------------------------------------------------------------------
+# reconciliation
+# ---------------------------------------------------------------------------
+
+
+def test_create_reconciliation_link_sends_payload(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"link_id": "link_1", "status": "active"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.create_reconciliation_link(
+        transaction_id="txn_1",
+        bank_transaction_id="btxn_1",
+        link_type="manual",
+    )
+
+    assert result["link_id"] == "link_1"
+    assert session.last_method == "POST"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/links")
+    assert session.last_kwargs["json"]["transaction_id"] == "txn_1"
+    assert session.last_kwargs["json"]["bank_transaction_id"] == "btxn_1"
+    assert session.last_kwargs["json"]["link_type"] == "manual"
+
+
+def test_list_reconciliation_links_passes_filter_params(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"links": [], "pagination": {}})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    client.list_reconciliation_links(statement_id="stmt_1", link_type="auto", limit=25)
+
+    assert session.last_method == "GET"
+    assert session.last_kwargs["params"] == {
+        "statement_id": "stmt_1",
+        "link_type": "auto",
+        "limit": 25,
+    }
+
+
+def test_update_reconciliation_link_sends_patch(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"link_id": "link_1", "status": "broken"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.update_reconciliation_link("link_1", {"status": "broken"})
+
+    assert result["status"] == "broken"
+    assert session.last_method == "PATCH"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/links/link_1")
+    assert session.last_kwargs["json"] == {"status": "broken"}
+
+
+def test_delete_reconciliation_link_returns_status_deleted(tmp_path: Path) -> None:
+    session = _Session(_Response(204, None, headers={"Content-Type": ""}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.delete_reconciliation_link("link_123")
+
+    assert result == {"status": "deleted", "link_id": "link_123"}
+    assert session.last_method == "DELETE"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/links/link_123")
+
+
+def test_run_auto_match_sends_payload(tmp_path: Path) -> None:
+    session = _Session(_Response(200, _ok({"matches_found": 5, "status": "completed"})))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.run_auto_match(
+        statement_id="stmt_1", strategy="fuzzy", min_confidence=0.8
+    )
+
+    assert result["matches_found"] == 5
+    assert session.last_method == "POST"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/auto-match")
+    assert session.last_kwargs["json"]["statement_id"] == "stmt_1"
+    assert session.last_kwargs["json"]["strategy"] == "fuzzy"
+    assert session.last_kwargs["json"]["min_confidence"] == 0.8
+
+
+def test_get_reconciliation_summary_sends_statement_id(tmp_path: Path) -> None:
+    session = _Session(
+        _Response(
+            200,
+            _ok({"matched": 10, "unmatched": 3, "total": 13}),
+        )
+    )
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.get_reconciliation_summary(statement_id="stmt_1")
+
+    assert result["matched"] == 10
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/summary")
+    assert session.last_kwargs["params"] == {"statement_id": "stmt_1"}
+
+
+def test_export_reconciliation_returns_csv(tmp_path: Path) -> None:
+    session = _Session(
+        _Response(
+            200,
+            None,
+            text="link_id,transaction_id,bank_transaction_id\nlink_1,txn_1,btxn_1\n",
+            headers={"Content-Type": "text/csv"},
+        )
+    )
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.export_reconciliation(format="csv", statement_id="stmt_1")
+
+    assert result == {
+        "content_type": "text/csv",
+        "body": "link_id,transaction_id,bank_transaction_id\nlink_1,txn_1,btxn_1\n",
+    }
+    assert session.last_method == "GET"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/export")
+    assert session.last_kwargs["params"] == {
+        "format": "csv",
+        "statement_id": "stmt_1",
+    }

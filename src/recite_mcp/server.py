@@ -426,6 +426,174 @@ def _build_handlers(
             format=format, output_path=output_path, filters=filters
         )
 
+    @server.tool("upload_bank_statement")
+    def upload_bank_statement(
+        csv_file_path: str | None = None,
+        csv_text: str | None = None,
+        account_name: str | None = None,
+        statement_date: str | None = None,
+        source: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        return tools.upload_bank_statement(
+            csv_file_path=csv_file_path,
+            csv_text=csv_text,
+            account_name=account_name,
+            statement_date=statement_date,
+            source=source,
+            metadata=metadata,
+        )
+
+    @server.tool("list_bank_statements")
+    def list_bank_statements(
+        account_name: str | None = None,
+        status: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict:
+        return tools.list_bank_statements(
+            account_name=account_name,
+            status=status,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    @server.tool("get_bank_statement")
+    def get_bank_statement(statement_id: str) -> dict:
+        return tools.get_bank_statement(statement_id)
+
+    @server.tool("delete_bank_statement")
+    def delete_bank_statement(statement_id: str) -> dict:
+        return tools.delete_bank_statement(statement_id)
+
+    @server.tool("export_bank_statement")
+    def export_bank_statement(
+        statement_id: str,
+        format: str | None = None,
+        output_path: str | None = None,
+    ) -> dict:
+        return tools.export_bank_statement(
+            statement_id, format=format, output_path=output_path
+        )
+
+    @server.tool("list_bank_transactions")
+    def list_bank_transactions(
+        statement_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        amount_min: float | int | None = None,
+        amount_max: float | int | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict:
+        return tools.list_bank_transactions(
+            statement_id=statement_id,
+            start_date=start_date,
+            end_date=end_date,
+            amount_min=amount_min,
+            amount_max=amount_max,
+            status=status,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    @server.tool("get_bank_transaction")
+    def get_bank_transaction(bank_transaction_id: str) -> dict:
+        return tools.get_bank_transaction(bank_transaction_id)
+
+    @server.tool("update_bank_transaction")
+    def update_bank_transaction(bank_transaction_id: str, changes: dict) -> dict:
+        return tools.update_bank_transaction(bank_transaction_id, changes)
+
+    @server.tool("delete_bank_transaction")
+    def delete_bank_transaction(bank_transaction_id: str) -> dict:
+        return tools.delete_bank_transaction(bank_transaction_id)
+
+    @server.tool("create_reconciliation_link")
+    def create_reconciliation_link(
+        transaction_id: str,
+        bank_transaction_id: str,
+        link_type: str | None = None,
+        notes: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
+        return tools.create_reconciliation_link(
+            transaction_id=transaction_id,
+            bank_transaction_id=bank_transaction_id,
+            link_type=link_type,
+            notes=notes,
+            metadata=metadata,
+        )
+
+    @server.tool("list_reconciliation_links")
+    def list_reconciliation_links(
+        statement_id: str | None = None,
+        transaction_id: str | None = None,
+        bank_transaction_id: str | None = None,
+        link_type: str | None = None,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        format: str | None = None,
+    ) -> dict:
+        return tools.list_reconciliation_links(
+            statement_id=statement_id,
+            transaction_id=transaction_id,
+            bank_transaction_id=bank_transaction_id,
+            link_type=link_type,
+            status=status,
+            limit=limit,
+            offset=offset,
+            format=format,
+        )
+
+    @server.tool("update_reconciliation_link")
+    def update_reconciliation_link(link_id: str, changes: dict) -> dict:
+        return tools.update_reconciliation_link(link_id, changes)
+
+    @server.tool("delete_reconciliation_link")
+    def delete_reconciliation_link(link_id: str) -> dict:
+        return tools.delete_reconciliation_link(link_id)
+
+    @server.tool("run_auto_match")
+    def run_auto_match(
+        statement_id: str | None = None,
+        strategy: str | None = None,
+        min_confidence: float | None = None,
+        dry_run: bool | None = None,
+    ) -> dict:
+        return tools.run_auto_match(
+            statement_id=statement_id,
+            strategy=strategy,
+            min_confidence=min_confidence,
+            dry_run=dry_run,
+        )
+
+    @server.tool("get_reconciliation_summary")
+    def get_reconciliation_summary(
+        statement_id: str | None = None,
+    ) -> dict:
+        return tools.get_reconciliation_summary(statement_id=statement_id)
+
+    @server.tool("export_reconciliation")
+    def export_reconciliation(
+        format: str | None = None,
+        statement_id: str | None = None,
+        output_path: str | None = None,
+    ) -> dict:
+        return tools.export_reconciliation(
+            format=format, statement_id=statement_id, output_path=output_path
+        )
+
     @server.tool("update_memory")
     def update_memory(instruction: str, tags: list[str] | None = None) -> dict:
         return tools.update_memory(instruction=instruction, tags=tags)
