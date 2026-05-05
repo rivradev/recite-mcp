@@ -1567,3 +1567,21 @@ def test_export_reconciliation_returns_csv(tmp_path: Path) -> None:
         "format": "csv",
         "statement_id": "stmt_1",
     }
+
+
+def test_get_reconciliation_recommendations(tmp_path: Path) -> None:
+    session = _Session(_Response(200, {"success": True, "data": [{"tx_id": "tx_1"}]}))
+    client = ApiClient(_settings(tmp_path), session=session)
+
+    result = client.get_reconciliation_recommendations(
+        bank_transaction_id="btx_123", limit=5
+    )
+
+    assert result == [{"tx_id": "tx_1"}]
+    assert session.last_method == "POST"
+    assert session.last_url is not None
+    assert session.last_url.endswith("/reconciliation/recommend")
+    assert session.last_kwargs["json"] == {
+        "bank_transaction_id": "btx_123",
+        "limit": 5,
+    }

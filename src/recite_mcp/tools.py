@@ -499,6 +499,17 @@ class ReciteTools:
     ) -> dict[str, Any]:
         return self._api_client.get_reconciliation_summary(statement_id=statement_id)
 
+    def get_reconciliation_recommendations(
+        self,
+        *,
+        bank_transaction_id: str,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
+        return self._api_client.get_reconciliation_recommendations(
+            bank_transaction_id=bank_transaction_id,
+            limit=limit,
+        )
+
     def export_reconciliation(
         self,
         *,

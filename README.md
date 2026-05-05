@@ -139,7 +139,7 @@ If installed via `pipx` or `pip`, use:
 
 ## Main Features
 
-**API tools (40 total):**
+**API tools (41 total):**
 
 - **Scans** — `scan_receipt` (file, URL, base64, or raw text; ephemeral mode), `get_scan`
 - **Transactions** — create, list (with filters), get, update, delete, `import_transactions` (JSON list, CSV text, or CSV file)
@@ -147,6 +147,7 @@ If installed via `pipx` or `pip`, use:
 - **Projects** — list, create, update, delete
 - **Summaries** — `get_summary` (period, date range, group-by)
 - **Webhooks** — create, list, delete (`transaction.created/updated/deleted`, `batch.completed`)
+- **Reconciliation** — `create_reconciliation_link`, `list_reconciliation_links`, `update_reconciliation_link`, `delete_reconciliation_link`, `run_auto_match`, `get_reconciliation_summary`, `get_reconciliation_recommendations`, `export_reconciliation`
 - **Rules** — create, list, update, delete (vendor_category, default_project, processing_preference)
 - **Categories** — `get_categories` (17 built-in + custom), `create_category`, `delete_category`
 - **Vendors** — `get_vendors`, `create_vendor`, `delete_vendor`
