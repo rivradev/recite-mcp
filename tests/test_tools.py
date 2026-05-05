@@ -195,6 +195,9 @@ class _Client:
     def get_reconciliation_summary(self, **kwargs: Any) -> dict:
         return {"matched": 10, "unmatched": 2, **kwargs}
 
+    def get_reconciliation_recommendations(self, **kwargs: Any) -> dict:
+        return {"recommendations": [{"tx_id": "tx_1"}], **kwargs}
+
     def export_reconciliation(self, **kwargs: Any) -> dict:
         return {
             "content_type": "text/csv",
@@ -351,6 +354,15 @@ def test_export_ledger_csv(tmp_path: Path) -> None:
     assert result["status"] == "ok"
     assert out.exists()
     assert "Bakery" in out.read_text(encoding="utf-8")
+
+
+def test_get_reconciliation_recommendations_tool_forwards_args(tmp_path: Path) -> None:
+    result = _tools(tmp_path).get_reconciliation_recommendations(
+        bank_transaction_id="btx_123", limit=5
+    )
+    assert result["recommendations"] == [{"tx_id": "tx_1"}]
+    assert result["bank_transaction_id"] == "btx_123"
+    assert result["limit"] == 5
 
 
 def test_export_ledger_json(tmp_path: Path) -> None:

@@ -60,6 +60,7 @@ def test_create_server_registers_tools_and_resources(tmp_path, monkeypatch) -> N
     assert "delete_reconciliation_link" in tool_names
     assert "run_auto_match" in tool_names
     assert "get_reconciliation_summary" in tool_names
+    assert "get_reconciliation_recommendations" in tool_names
     assert "export_reconciliation" in tool_names
     assert "recite://ledger" in resource_uris
     assert "recite://health" in resource_uris
@@ -1082,4 +1083,19 @@ def test_server_export_reconciliation(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mod.ReciteTools, "export_reconciliation", mock)
     tools["export_reconciliation"]()
+    assert called
+
+def test_server_get_reconciliation_recommendations(tmp_path, monkeypatch):
+    server, tools = _get_server_and_tools(tmp_path, monkeypatch)
+    import recite_mcp.tools as mod
+
+    called = False
+
+    def mock(*args, **kwargs):
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(mod.ReciteTools, "get_reconciliation_recommendations", mock)
+    tools["get_reconciliation_recommendations"](bank_transaction_id="btx_123")
     assert called

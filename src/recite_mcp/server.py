@@ -584,6 +584,16 @@ def _build_handlers(
     ) -> dict:
         return tools.get_reconciliation_summary(statement_id=statement_id)
 
+    @server.tool("get_reconciliation_recommendations")
+    def get_reconciliation_recommendations(
+        bank_transaction_id: str,
+        limit: int | None = None,
+    ) -> dict:
+        return tools.get_reconciliation_recommendations(
+            bank_transaction_id=bank_transaction_id,
+            limit=limit,
+        )
+
     @server.tool("export_reconciliation")
     def export_reconciliation(
         format: str | None = None,
